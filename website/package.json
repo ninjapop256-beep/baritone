@@ -12,6 +12,7 @@
         "start": "node server.js",
         "demo": "node server.js --demo",
         "seed": "node scripts/seed.js",
+        "world": "node scripts/make-world.js",
         "test": "node --test test/*.test.js",
         "check": "node -e \"const fs=require('fs'),p=require('path'),cp=require('child_process');const walk=(d)=>fs.readdirSync(d,{withFileTypes:true}).flatMap((e)=>['node_modules','data'].includes(e.name)||e.name.startsWith('.')?[]:e.isDirectory()?walk(p.join(d,e.name)):/\\.m?js$/.test(e.name)?[p.join(d,e.name)]:[]);const files=walk('.');for(const f of files)cp.execFileSync(process.execPath,['--check',f],{stdio:'inherit'});console.log('Syntax OK: '+files.length+' files');\""
     }

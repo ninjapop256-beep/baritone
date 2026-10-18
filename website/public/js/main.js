@@ -149,10 +149,15 @@ async function boot() {
         return typeof route.title === 'function' ? route.title(route.params) : route.title;
     };
 
+    // live = a real server whose data can change: drives polling and the LIVE badge
+    // (false for static demo mode and for the read-only `server.js --demo`).
+    const live = mode === 'live' && config.mode !== 'demo';
+
     const makeCtx = (route, scoped) => ({
         api,
         config,
         mode,
+        live,
         params: { ...route.params },
         query: { ...route.query },
         route,

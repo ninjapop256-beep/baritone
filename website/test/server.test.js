@@ -159,6 +159,24 @@ describe('live server', () => {
         assert.match(missing.body.error, /Nobody Here/);
     });
 
+    test('X-Soft-404 turns API 404s into 200 { notFound } for GET only', async () => {
+        const soft = { 'X-Soft-404': '1' };
+        for (const p of ['/api/games/99', '/api/profile/Nobody%20Here', '/api/nope']) {
+            const res = await json(await fetch(`${srv.base}${p}`, { headers: soft }));
+            assert.equal(res.status, 200, p);
+            assert.equal(res.body.notFound, true, p);
+            assert.equal(typeof res.body.error, 'string', p);
+            assert.equal(res.headers.get('cache-control'), 'no-store');
+        }
+        // found resources are unchanged; writes keep real status codes
+        const ok = await json(await fetch(`${srv.base}/api/games/2`, { headers: soft }));
+        assert.equal(ok.body.number, 2);
+        assert.equal(ok.body.notFound, undefined);
+        const del = await fetch(`${srv.base}/api/games/99`, { method: 'DELETE', headers: { ...soft, Authorization: `Bearer ${KEY}` } });
+        assert.equal(del.status, 404);
+        assert.equal((await fetch(`${srv.base}/api/games/99`, { headers: { 'X-Soft-404': 'no' } })).status, 404);
+    });
+
     test('unknown API routes and methods', async () => {
         assert.equal((await fetch(`${srv.base}/api/nope`)).status, 404);
         assert.equal((await fetch(`${srv.base}/api`)).status, 404);

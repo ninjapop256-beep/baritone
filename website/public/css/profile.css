@@ -41,16 +41,6 @@
     text-shadow: var(--shadow-soft);
 }
 
-/* base.css declares .tier-chip / .tier-bar after the .tier-* classes, which resets their
-   solid tint to coal; re-apply it here so borders and glows match the tier. */
-.pf :is(.tier-chip, .tier-bar).tier-coal { --tier-c: var(--tier-coal-c); }
-.pf :is(.tier-chip, .tier-bar).tier-copper { --tier-c: var(--tier-copper-c); }
-.pf :is(.tier-chip, .tier-bar).tier-iron { --tier-c: var(--tier-iron-c); }
-.pf :is(.tier-chip, .tier-bar).tier-gold { --tier-c: var(--tier-gold-c); }
-.pf :is(.tier-chip, .tier-bar).tier-emerald { --tier-c: var(--tier-emerald-c); }
-.pf :is(.tier-chip, .tier-bar).tier-diamond { --tier-c: var(--tier-diamond-c); }
-.pf :is(.tier-chip, .tier-bar).tier-netherite { --tier-c: var(--tier-netherite-c); }
-
 /* ---------- skin card ---------- */
 .pf-skin {
     display: flex;
@@ -452,24 +442,10 @@
     flex-direction: column;
     align-items: center;
     gap: 10px;
-    padding: 52px 24px 48px;
+    padding: 44px 24px 46px;
     text-align: center;
 }
-.pf-missing-art {
-    display: grid;
-    place-items: center;
-    width: 92px;
-    height: 92px;
-    margin-bottom: 8px;
-    border-radius: 18px;
-    font: 400 78px/1 var(--font-num);
-    color: #ffe08f;
-    background: linear-gradient(180deg, rgba(255, 207, 83, .16), rgba(255, 143, 200, .1));
-    border: 1px solid rgba(255, 207, 83, .35);
-    box-shadow: inset 0 -6px 0 rgba(0, 0, 0, .25), 0 18px 40px -20px rgba(255, 143, 200, .5);
-    text-shadow: 3px 3px 0 rgba(0, 0, 0, .5);
-}
-.pf-missing-title { font-size: 28px; }
+.pf-missing-title { font-size: 26px; }
 .pf-missing .card-sub { max-width: 54ch; font-size: 14px; line-height: 1.55; }
 .pf-missing-name { color: var(--text); font-weight: 700; overflow-wrap: anywhere; }
 .pf-missing-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 16px; }
@@ -692,8 +668,8 @@
     .pf-game .delta { font-size: 21px; }
     .pf-table th, .pf-table td { padding: 8px 10px; }
 
-    .pf-missing { padding: 40px 16px; }
-    .pf-missing-title { font-size: 24px; }
+    .pf-missing { padding: 34px 16px 36px; }
+    .pf-missing-title { font-size: 22px; }
 }
 
 @media (max-width: 380px) {

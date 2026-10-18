@@ -1,9 +1,9 @@
 // Rankings view (/rankings/overall): top-3 podium, tier filter, live search and the full ladder.
 // Rows are keyed DOM nodes (see patchList) so polling, search and filtering never rebuild
 // unchanged rows; body skins are drawn lazily as rows approach the viewport.
-import { html, setHtml, qs, on } from '../ui/dom.js';
+import { html, setHtml, qs, on, patchList } from '../ui/dom.js';
 import { skinImg } from '../ui/skins.js';
-import { tierText, tierClass, placeText } from '../ui/badges.js';
+import { tierText, tierClass, placeText, countText } from '../ui/badges.js';
 import { fmtInt, fmtDec, plural } from '../ui/format.js';
 
 const POLL_MS = 10000;
@@ -13,76 +13,14 @@ const FIRST_ROWS = 60; // first paint renders this many rows, the rest follow in
 const ROW_CHUNK = 400;
 const HIGHLIGHT = 'rk-match';
 
-/**
- * Keyed list patch. items: [{ key, html }] where each html string is ONE element.
- * A node is (re)parsed only when its markup changed since the last call; the container is
- * only touched when the node sequence differs, and then with as few moves as possible
- * (keeps hover, focus and decoded images on unchanged rows). `cache` is a Map the caller keeps per list.
- * onReplace(oldNode) is called for each node superseded by a re-parse.
- * Returns a Map key → node of the nodes created by this call.
- */
-export function patchList(container, items, cache, onReplace) {
-    const created = new Map();
-    const stale = items.filter((it) => cache.get(it.key)?.html !== it.html);
-    if (stale.length) {
-        const tpl = document.createElement('template');
-        tpl.innerHTML = stale.map((it) => it.html).join('');
-        const nodes = Array.from(tpl.content.children);
-        if (nodes.length !== stale.length) throw new Error('patchList: every item must render exactly one element');
-        stale.forEach((it, i) => {
-            const old = cache.get(it.key);
-            if (old) {
-                if (old.node.parentNode === container) old.node.replaceWith(nodes[i]);
-                onReplace?.(old.node);
-            }
-            cache.set(it.key, { html: it.html, node: nodes[i] });
-            created.set(it.key, nodes[i]);
-        });
-    }
-    const nodes = items.map((it) => cache.get(it.key).node);
-    const kids = container.children;
-    let same = kids.length === nodes.length;
-    for (let i = 0; same && i < nodes.length; i++) same = kids[i] === nodes[i];
-    if (same) return created;
-
-    const focused = container.contains(document.activeElement) ? document.activeElement : null;
-    // drop unwanted nodes first, so a filtered subset needs no moves at all...
-    const wanted = new Set(nodes);
-    for (let n = container.firstElementChild; n;) {
-        const next = n.nextElementSibling;
-        if (!wanted.has(n)) n.remove();
-        n = next;
-    }
-    // ...then move only the nodes that are out of order (a rank change moves one row)
-    let cursor = container.firstElementChild;
-    for (const node of nodes) {
-        if (node === cursor) cursor = cursor.nextElementSibling;
-        else container.insertBefore(node, cursor);
-    }
-    if (focused && focused.isConnected && document.activeElement !== focused) focused.focus({ preventScroll: true });
-    return created;
-}
-
 const profilePath = (name) => `/profile/${encodeURIComponent(name)}`;
-
-/** ctx.href for hot loops: router.href() queries the DOM on every call in hash mode, which is
- *  O(rows) per link. Precompute its prefix once (verified; falls back to ctx.href). */
-export function fastHref(ctx) {
-    const prefix = ctx.href('/').slice(0, -1);
-    return ctx.href('/a/b?c=1') === `${prefix}/a/b?c=1` ? (path) => prefix + path : ctx.href;
-}
-
-/** '650 ranked players' with the figure in the numbers font (Pixelify's 5 reads like an S). */
-export function countText(n, word, pluralWord = `${word}s`) {
-    return html`<span class="digits rk-count">${fmtInt(n)}</span> ${Number(n) === 1 ? word : pluralWord}`;
-}
 
 // Small pixel crown over the #1 card (original art).
 const CROWN = html`<svg class="rk-crown" viewBox="0 0 11 7" width="33" height="21" aria-hidden="true" shape-rendering="crispEdges"><path fill="#7a4a06" d="M0 1h1v6H0zM10 1h1v6h-1zM1 6h9v1H1z"/><path fill="#ffcf53" d="M1 2h1v4H1zM9 2h1v4H9zM2 3h1v3H2zM8 3h1v3H8zM3 2h1v4H3zM7 2h1v4H7zM4 3h3v3H4zM5 0h1v3H5z"/><path fill="#fff3b8" d="M1 2h1v1H1zM5 0h1v1H5zM9 2h1v1H9z"/><path fill="#ff6b9a" d="M5 4h1v1H5z"/></svg>`;
 
 export function mount(root, ctx) {
     const { api, config, shell } = ctx;
-    const link = fastHref(ctx);
+    const link = ctx.href;
     const ratingName = config.ratingName || 'Hype';
     const minTeams = config.scoring?.minTeams ?? 4;
     // highest tier first, like the ladder itself
@@ -272,7 +210,7 @@ export function mount(root, ctx) {
             counts.set(id, (counts.get(id) || 0) + 1);
         }
 
-        setHtml(el.summary, html`${countText(data.total, 'ranked player')}${filtering ? html` · <span class="rk-matches">${countText(list.length, 'match', 'matches')}</span>` : ''}${ctx.mode === 'live' ? html` <span class="rk-live" title="Updates automatically">Live</span>` : ''}`);
+        setHtml(el.summary, html`${countText(data.total, 'ranked player')}${filtering ? html` · <span class="rk-matches">${countText(list.length, 'match', 'matches')}</span>` : ''}${ctx.live ? html` <span class="rk-live" title="Updates automatically">Live</span>` : ''}`);
 
         el.filters.hidden = data.total === 0;
         if (data.total) {
@@ -450,7 +388,7 @@ export function mount(root, ctx) {
     });
 
     const onVisible = () => { if (!document.hidden) load({ quiet: true }); };
-    if (ctx.mode === 'live') {
+    if (ctx.live) {
         pollTimer = setInterval(() => { if (!document.hidden) load({ quiet: true }); }, POLL_MS);
         document.addEventListener('visibilitychange', onVisible);
     }

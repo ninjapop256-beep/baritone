@@ -70,3 +70,53 @@ export function on(root, event, selector, handler, options) {
     root.addEventListener(event, listener, options);
     return () => root.removeEventListener(event, listener, options);
 }
+
+/**
+ * Keyed list patch. items: [{ key, html }] where each html string is ONE element.
+ * A node is (re)parsed only when its markup changed since the last call; the container is
+ * only touched when the node sequence differs, and then with as few moves as possible
+ * (keeps hover, focus and decoded images on unchanged rows). `cache` is a Map the caller keeps per list.
+ * onReplace(oldNode) is called for each node superseded by a re-parse.
+ * Returns a Map key → node of the nodes created by this call.
+ */
+export function patchList(container, items, cache, onReplace) {
+    const created = new Map();
+    const stale = items.filter((it) => cache.get(it.key)?.html !== it.html);
+    if (stale.length) {
+        const tpl = document.createElement('template');
+        tpl.innerHTML = stale.map((it) => it.html).join('');
+        const nodes = Array.from(tpl.content.children);
+        if (nodes.length !== stale.length) throw new Error('patchList: every item must render exactly one element');
+        stale.forEach((it, i) => {
+            const old = cache.get(it.key);
+            if (old) {
+                if (old.node.parentNode === container) old.node.replaceWith(nodes[i]);
+                onReplace?.(old.node);
+            }
+            cache.set(it.key, { html: it.html, node: nodes[i] });
+            created.set(it.key, nodes[i]);
+        });
+    }
+    const nodes = items.map((it) => cache.get(it.key).node);
+    const kids = container.children;
+    let same = kids.length === nodes.length;
+    for (let i = 0; same && i < nodes.length; i++) same = kids[i] === nodes[i];
+    if (same) return created;
+
+    const focused = container.contains(document.activeElement) ? document.activeElement : null;
+    // drop unwanted nodes first, so a filtered subset needs no moves at all...
+    const wanted = new Set(nodes);
+    for (let n = container.firstElementChild; n;) {
+        const next = n.nextElementSibling;
+        if (!wanted.has(n)) n.remove();
+        n = next;
+    }
+    // ...then move only the nodes that are out of order (a rank change moves one row)
+    let cursor = container.firstElementChild;
+    for (const node of nodes) {
+        if (node === cursor) cursor = cursor.nextElementSibling;
+        else container.insertBefore(node, cursor);
+    }
+    if (focused && focused.isConnected && document.activeElement !== focused) focused.focus({ preventScroll: true });
+    return created;
+}

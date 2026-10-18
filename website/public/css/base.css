@@ -645,6 +645,8 @@ a.row:active { transform: none; }
 .mode-purple { --mode: var(--mode-purple); }
 
 /* ---------- tiers ---------- */
+/* zero-specificity default tint, so a .tier-<id> class on the same element always wins */
+:where(.tier-chip, .tier-bar) { --tier-c: var(--tier-coal-c); }
 .tier-coal { --tier: var(--tier-coal); --tier-c: var(--tier-coal-c); }
 .tier-copper { --tier: var(--tier-copper); --tier-c: var(--tier-copper-c); }
 .tier-iron { --tier: var(--tier-iron); --tier-c: var(--tier-iron-c); }
@@ -669,7 +671,6 @@ a.row:active { transform: none; }
 }
 
 .tier-chip {
-    --tier-c: var(--tier-coal-c);
     display: inline-flex;
     align-items: center;
     height: 26px;
@@ -683,7 +684,6 @@ a.row:active { transform: none; }
 .tier-chip > span { font-size: 10px; letter-spacing: .09em; }
 
 .tier-bar {
-    --tier-c: var(--tier-coal-c);
     position: relative;
     height: 10px;
     border-radius: 999px;
@@ -993,6 +993,40 @@ a.row:active { transform: none; }
     overflow-wrap: anywhere;
 }
 .notfound-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 14px; }
+
+/* "?" gold block for the player / game not-found states (shared) */
+.mystery {
+    display: grid;
+    place-items: center;
+    width: 180px;
+    height: 128px;
+    margin-bottom: 6px;
+    background: radial-gradient(46% 46% at 50% 62%, rgba(255, 196, 70, .3), transparent 72%);
+}
+.mystery-block {
+    display: grid;
+    place-items: center;
+    width: 84px;
+    height: 84px;
+    background:
+        linear-gradient(180deg, #fff4b8 0 8px, #ffe27a 8px 12px, transparent 12px),
+        conic-gradient(rgba(255, 255, 255, .13) 25%, transparent 0 50%, rgba(140, 70, 0, .11) 0 75%, transparent 0) 0 12px / 10px 10px,
+        linear-gradient(180deg, #ffd24c 12px, #f2ab22 62%, #cd8412 100%);
+    box-shadow:
+        inset 3px 0 0 rgba(255, 249, 220, .5),
+        inset -3px 0 0 rgba(150, 84, 0, .42),
+        inset 0 -4px 0 rgba(118, 62, 0, .6),
+        0 24px 44px -14px rgba(255, 180, 50, .6);
+    animation: mystery-bob 3.2s ease-in-out infinite;
+}
+.mystery-q {
+    margin-top: 12px;
+    font: 700 54px/1 var(--font-pixel);
+    color: #8a5306;
+    text-shadow: 2px 2px 0 rgba(255, 244, 196, .55);
+}
+@keyframes mystery-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+@media (forced-colors: active) { .mystery-block { forced-color-adjust: none; } }
 
 /* ---------- footer ---------- */
 .footer {

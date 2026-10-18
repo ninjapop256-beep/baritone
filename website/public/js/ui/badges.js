@@ -1,6 +1,6 @@
 // Small badge/label helpers that return SafeHtml.
 import { html } from './dom.js';
-import { fmtSigned, fmtPlace, mapName } from './format.js';
+import { fmtSigned, fmtPlace, fmtInt, mapName } from './format.js';
 
 const MODE_COLORS = new Set(['gold', 'red', 'blue', 'green', 'purple']);
 
@@ -59,4 +59,9 @@ export function placeText(n) {
     const v = Math.round(Number(n));
     const medal = v >= 1 && v <= 3 ? ` place-${v}` : '';
     return html`<span class="place${medal}">${fmtPlace(n)}</span>`;
+}
+
+/** '650 ranked players' with the figure in the numbers font (Pixelify's 5 reads like an S). */
+export function countText(n, word, pluralWord = `${word}s`) {
+    return html`<span class="digits rk-count">${fmtInt(n)}</span> ${Number(n) === 1 ? word : pluralWord}`;
 }

@@ -1,10 +1,9 @@
 // Game history view (/rankings/history): newest ranked games first, "Load older games"
 // paging with before=, live polling that merges new games on top of the pages already loaded.
-import { html, setHtml, qs, on } from '../ui/dom.js';
+import { html, setHtml, qs, on, patchList } from '../ui/dom.js';
 import { skinImg } from '../ui/skins.js';
-import { modePill, chip } from '../ui/badges.js';
+import { modePill, chip, countText } from '../ui/badges.js';
 import { fmtDuration, fmtDateTime, fmtRelative, fmtInt, mapName, teamSizeLabel } from '../ui/format.js';
-import { patchList, fastHref, countText } from './rankings.js';
 
 const PAGE = 30;
 const POLL_MS = 15000;
@@ -22,7 +21,7 @@ export function joinNames(names) {
 
 export function mount(root, ctx) {
     const { api, shell } = ctx;
-    const link = fastHref(ctx);
+    const link = ctx.href;
 
     let alive = true;
     let games = [];        // contiguous newest-first prefix of all ranked games
@@ -124,8 +123,8 @@ export function mount(root, ctx) {
 
         const now = ctx.now();
         const newest = games[0];
-        const latestWhen = newest ? (newest.endedAt ?? newest.startedAt) : null;
-        setHtml(el.summary, html`${countText(total, 'ranked game')}${newest ? html` · latest ${fmtRelative(latestWhen, now)}` : ''}${ctx.mode === 'live' ? html` <span class="rk-live" title="Updates automatically">Live</span>` : ''}`);
+        const latestWhen = newest ? (newest.startedAt ?? newest.endedAt) : null; // same clock as the rows
+        setHtml(el.summary, html`${countText(total, 'ranked game')}${newest ? html` · latest ${fmtRelative(latestWhen, now)}` : ''}${ctx.live ? html` <span class="rk-live" title="Updates automatically">Live</span>` : ''}`);
 
         const created = patchList(el.rows, games.map((g, i) => ({ key: g.number, html: rowHtml(g, i === 0, now) })), rowCache);
         if (fresh) {
@@ -246,8 +245,8 @@ export function mount(root, ctx) {
     });
     const offAnim = on(el.rows, 'animationend', '.hs-row.is-new', (ev, row) => row.classList.remove('is-new'));
 
-    const onVisible = () => { if (!document.hidden && ctx.mode === 'live') loadNewest({ quiet: true }); };
-    if (ctx.mode === 'live') {
+    const onVisible = () => { if (!document.hidden && ctx.live) loadNewest({ quiet: true }); };
+    if (ctx.live) {
         pollTimer = setInterval(() => { if (!document.hidden) loadNewest({ quiet: true }); }, POLL_MS);
         document.addEventListener('visibilitychange', onVisible);
     }

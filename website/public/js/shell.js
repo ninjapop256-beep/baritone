@@ -110,6 +110,8 @@ export function renderShell({ config = {}, mode = 'demo', router = {} } = {}) {
     const mark = brand.mark ?? 'PVP';
     const text = brand.text ?? 'EVENTS';
     const demoData = mode === 'demo' || config.mode === 'demo';
+    const description = document.querySelector('meta[name="description"]');
+    if (description && config.tagline) description.setAttribute('content', `${siteName}: ${config.tagline}`);
 
     const navExternal = (url, label) => (isExternalUrl(url)
         ? html`<a class="nav-link" href="${url}" target="_blank" rel="noopener noreferrer" data-external>${label}${EXT}<span class="visually-hidden"> (opens in a new tab)</span></a>`

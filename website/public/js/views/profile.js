@@ -103,7 +103,9 @@ export function mount(root, ctx) {
 
     const back = shell.backLink(ctx.href('/rankings/overall'), 'Back to rankings');
     const profileHref = (name) => ctx.href(`/profile/${encodeURIComponent(name)}`);
-    const gameHref = (n) => ctx.href(`/rankings/history/${n}`);
+    // ?player= makes the game page highlight (and scroll to) this player's team
+    const gamePath = (n, name) => `/rankings/history/${n}${name ? `?player=${encodeURIComponent(name)}` : ''}`;
+    const gameHref = (n, name) => ctx.href(gamePath(n, name));
     const part = (name) => qs(`[data-part="${name}"]`, root);
 
     // ---------- whole-page states ----------
@@ -130,7 +132,7 @@ export function mount(root, ctx) {
     function notFoundView() {
         return html`${back}
             <section class="card card-pad pf-missing">
-                <div class="pf-missing-art" aria-hidden="true">?</div>
+                <div class="mystery" aria-hidden="true"><span class="mystery-block"><span class="mystery-q">?</span></span></div>
                 <h1 class="pf-missing-title">Player not found</h1>
                 <p class="card-sub">Nobody called <strong class="pf-missing-name">${short(key || '(blank)')}</strong> has played a ranked game yet.
                     Names match exactly, ignoring capitals — check the spelling or search the ladder.</p>
@@ -345,7 +347,7 @@ export function mount(root, ctx) {
                     <th scope="col" class="right">${ratingName}</th><th scope="col" class="right">Change</th><th scope="col" class="right">Rank</th>
                 </tr></thead>
                 <tbody>${rows.length ? rows.map((pt) => html`<tr>
-                    <th scope="row"><a class="link" href="${gameHref(pt.number)}">#${pt.number}</a></th>
+                    <th scope="row"><a class="link" href="${gameHref(pt.number, state.data?.player?.name)}">#${pt.number}</a></th>
                     <td>${nums(fmtDateTime(pt.at))}</td>
                     <td class="right">${placeText(pt.placement)}<span class="pf-table-of"> / ${fmtInt(pt.teams)}</span></td>
                     <td class="right num">${fmtInt(pt.hype)}</td>
@@ -360,17 +362,18 @@ export function mount(root, ctx) {
             <span class="pf-caret" aria-hidden="true"></span>${state.table ? 'Hide table' : 'Show as table'}</button>`;
     }
 
-    function gameRow(g, now) {
+    function gameRow(g, now, playerName) {
         const unit = g.teamSize > 1 ? 'teams' : 'players';
-        return html`<li><a class="row pf-game" href="${gameHref(g.number)}" data-game="${g.number}">
+        const when = g.startedAt ?? g.endedAt; // start time, like the game history list and game page
+        return html`<li><a class="row pf-game" href="${gameHref(g.number, playerName)}" data-game="${g.number}">
             <span class="cell pf-game-when hide-sm">
-                <span class="pf-game-day">${nums(fmtDate(g.endedAt))}</span>
-                <span class="pf-sub" title="${fmtDateTime(g.endedAt)}">${nums(`${fmtTime(g.endedAt)} · ${fmtRelative(g.endedAt, now)}`)}</span>
+                <span class="pf-game-day">${nums(fmtDate(when))}</span>
+                <span class="pf-sub" title="${fmtDateTime(when)}">${nums(`${fmtTime(when)} · ${fmtRelative(when, now)}`)}</span>
             </span>
             <span class="cell pf-game-event">
                 <span class="pf-game-pills">${modePill(g)}${chip(teamSizeLabel(g.teamSize))}</span>
                 <span class="pf-sub truncate">${nums(`Game #${g.number}`)}${g.map ? ` · ${mapName(g.map)}` : ''}</span>
-                <span class="pf-sub show-sm">${nums(`${fmtDate(g.endedAt)}, ${fmtTime(g.endedAt)} · ${plural(g.kills, 'kill')}`)}</span>
+                <span class="pf-sub show-sm">${nums(`${fmtDate(when)}, ${fmtTime(when)} · ${plural(g.kills, 'kill')}`)}</span>
             </span>
             <span class="cell pf-game-place">${placeText(g.placement)}<span class="pf-sub">${nums(`of ${fmtInt(g.teams)} ${unit}`)}</span></span>
             <span class="cell pf-game-kills hide-sm"><span class="num">${fmtInt(g.kills)}</span><span class="pf-sub">${g.kills === 1 ? 'kill' : 'kills'}</span></span>
@@ -388,7 +391,7 @@ export function mount(root, ctx) {
                 </div>
             </div>
             ${games.length
-                ? html`<ol class="pf-game-list" role="list">${games.slice(0, shown).map((g) => gameRow(g, now))}</ol>`
+                ? html`<ol class="pf-game-list" role="list">${games.slice(0, shown).map((g) => gameRow(g, now, state.data?.player?.name))}</ol>`
                 : html`<div class="empty"><p class="empty-title">No ranked games yet</p></div>`}
             ${rest > 0 ? html`<div class="pf-more"><button class="btn" type="button" data-more data-focus="more">Show ${fmtInt(Math.min(rest, MORE_STEP))} more</button></div>` : ''}`;
     }
@@ -500,7 +503,7 @@ export function mount(root, ctx) {
             setHtml(root, frameView());
             chartSig = '';
             chart = createChart(qs('[data-chart]', root), {
-                onSelect: (pt) => ctx.navigate(`/rankings/history/${pt.number}`),
+                onSelect: (pt) => ctx.navigate(gamePath(pt.number, state.data?.player?.name)),
             });
         }
         const p = d.player;
@@ -588,7 +591,7 @@ export function mount(root, ctx) {
 
     setHtml(root, loadingView());
     load(true);
-    if (ctx.mode === 'live') {
+    if (ctx.live) {
         timer = setInterval(() => { if (!document.hidden && state.data) load(false); }, POLL_MS);
     }
 

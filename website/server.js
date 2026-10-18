@@ -165,6 +165,11 @@ function readBody(req, limit) {
     });
 }
 
+// Opt-in for GET/HEAD clients: `X-Soft-404: 1` turns an API 404 into 200 { error, notFound: true }.
+function wantsSoft404(req) {
+    return (req.method === 'GET' || req.method === 'HEAD') && /^(1|true)$/i.test(String(req.headers['x-soft-404'] || ''));
+}
+
 function isSpaRoute(p) {
     return p === '/' || p === '/index.html' || p === '/rankings' || p.startsWith('/rankings/')
         || p === '/profile' || p.startsWith('/profile/');
@@ -450,7 +455,11 @@ export async function createApp(options = {}) {
                 if (status === 401) headers['WWW-Authenticate'] = 'Bearer';
                 if (status === 413) headers.Connection = 'close';
                 const message = err instanceof HttpError ? err.message : 'Internal server error';
-                if (isApi) {
+                if (isApi && status === 404 && wantsSoft404(req)) {
+                    // The web UI asks for not-found as 200 + { notFound: true } so browsers
+                    // don't log a console error on every "Player not found" page.
+                    sendJson(req, res, 200, { error: message, notFound: true }, headers);
+                } else if (isApi) {
                     const body = { error: message };
                     if (err.details) body.details = err.details;
                     sendJson(req, res, status, body, headers);

@@ -32,6 +32,8 @@ const sameDay = (a, b) => {
 };
 const iso = (ms) => (Number.isFinite(ms) ? new Date(ms).toISOString() : '');
 const kills = (n) => html`<span class="num">${fmtInt(n)}</span> ${Number(n) === 1 ? 'kill' : 'kills'}`;
+// figures inside running text use the numbers font (Pixelify's 5 reads like an S)
+const fig = (v) => html`<span class="digits gm-fig-n">${v}</span>`;
 
 /** ?player= matcher: name (any case) or uuid (dashed or not). */
 function playerMatcher(key) {
@@ -46,7 +48,7 @@ export function mount(root, ctx) {
     const config = ctx.config || {};
     const tiers = config.tiers;
     const ratingName = config.ratingName || 'Hype';
-    const live = ctx.mode === 'live';
+    const live = !!ctx.live;
     const href = ctx.href;
     const gameHref = (n) => href(`/rankings/history/${n}`);
     const profileHref = (p) => href(`/profile/${encodeURIComponent(p.name || p.uuid || '')}`);
@@ -67,7 +69,7 @@ export function mount(root, ctx) {
 
     setHtml(root, html`
         <div class="gm-topnav">
-            ${shell.backLink(href('/rankings/history'), 'Back to game history')}
+            ${shell.backLink(href('/rankings/history'), html`Back to <span class="gm-hide-xs">game </span>history`)}
             <nav class="gm-mini" aria-label="Older and newer games" hidden></nav>
         </div>
         <div class="gm-slot" data-slot="hero"></div>
@@ -110,7 +112,7 @@ export function mount(root, ctx) {
         let tied = 0;
         let tiedNames = [];
         if (mk && mk.kills > 0) {
-            for (const t of g.teams) for (const p of t.players) if (p.kills === mk.kills && p.uuid !== mk.uuid) tiedNames.push(p.name);
+            for (const t of g.teams) for (const p of t.players || []) if (p.kills === mk.kills && p.uuid !== mk.uuid) tiedNames.push(p.name);
             tied = tiedNames.length;
             tiedNames = tiedNames.slice(0, 6);
         }
@@ -121,9 +123,11 @@ export function mount(root, ctx) {
                         ${modePill(g)}${chip(teamSizeLabel(g.teamSize))}${map ? chip(map, 'plain') : ''}${chip('Ranked', 'good')}${g.next === null ? chip('Latest game', 'accent') : ''}
                     </div>
                     <h1 class="gm-title" id="gm-title">Game <span class="digits gm-title-n">#${g.number}</span></h1>
-                    <p class="gm-when">
-                        <span class="nowrap">Started <time datetime="${iso(g.startedAt)}">${fmtDateTimeLong(g.startedAt)}</time></span>${ended ? html`<span class="gm-sep" aria-hidden="true"> · </span><span class="nowrap">ended <time datetime="${iso(g.endedAt)}">${ended}</time></span>` : ''}${Number.isFinite(g.endedAt) ? html`<span class="gm-sep" aria-hidden="true"> · </span><span class="gm-ago nowrap">${fmtRelative(g.endedAt, now)}</span>` : ''}
-                    </p>
+                    <p class="gm-when"><span class="gm-when-in">
+                        <span>Started <time datetime="${iso(g.startedAt)}">${fmtDateTimeLong(g.startedAt)}</time></span>
+                        ${ended ? html`<span><span class="visually-hidden">, </span>ended <time datetime="${iso(g.endedAt)}">${ended}</time></span>` : ''}
+                        ${Number.isFinite(g.endedAt) ? html`<span class="gm-ago"><span class="visually-hidden">, </span>${fmtRelative(g.endedAt, now)}</span>` : ''}
+                    </span></p>
                 </div>
                 <div class="gm-dur">
                     <span class="stat-label gm-dur-k">Duration</span>
@@ -132,14 +136,14 @@ export function mount(root, ctx) {
                 </div>
             </div>
             <div class="stat-grid gm-tiles">
-                <div class="stat-tile"><span class="stat-label">Players</span><span class="stat-value">${fmtInt(g.players)}</span></div>
-                <div class="stat-tile"><span class="stat-label">Teams</span><span class="stat-value">${fmtInt(g.teamCount)}</span></div>
-                <div class="stat-tile"><span class="stat-label">Total kills</span><span class="stat-value">${fmtInt(g.kills)}</span></div>
-                <div class="stat-tile gm-tile-mk"><span class="stat-label">Most kills</span>
+                <div class="stat-tile"><span class="stat-label">Players</span> <span class="stat-value">${fmtInt(g.players)}</span></div>
+                <div class="stat-tile"><span class="stat-label">Teams</span> <span class="stat-value">${fmtInt(g.teamCount)}</span></div>
+                <div class="stat-tile"><span class="stat-label">Total kills</span> <span class="stat-value">${fmtInt(g.kills)}</span></div>
+                <div class="stat-tile gm-tile-mk">
+                    <span class="stat-label gm-mk-label">Most kills${tied ? html`<span class="gm-mk-tie" title="Tied with ${tiedNames.join(', ')}${tied > tiedNames.length ? ' and others' : ''}"><span class="visually-hidden">, </span>+${tied}<span class="hide-sm"> tied</span><span class="show-sm visually-hidden"> tied</span></span>` : ''}</span>
                     ${mk && mk.kills > 0 ? html`<span class="gm-mk">
                         <a class="gm-mk-name link" href="${profileHref(mk)}" title="${mk.name}">${mk.name}</a>
                         <span class="num gm-mk-n"><span class="visually-hidden">with </span>${fmtInt(mk.kills)}<span class="visually-hidden"> kills</span></span>
-                        ${tied ? html`<span class="gm-mk-tie" title="Tied with ${tiedNames.join(', ')}${tied > tiedNames.length ? ' and others' : ''}">+${tied}<span class="visually-hidden"> tied</span></span>` : ''}
                     </span>` : html`<span class="stat-value faint">—</span>`}
                 </div>
             </div>
@@ -154,7 +158,7 @@ export function mount(root, ctx) {
             <span class="gm-block" aria-hidden="true"></span>
             <div class="gm-champ-info">
                 <a class="gm-champ-name" href="${profileHref(p)}">${p.name}</a>
-                <p class="gm-champ-stats">${kills(p.kills)}<span class="gm-sep" aria-hidden="true">·</span>${hypeDelta(p.hypeChange)}<span class="visually-hidden"> ${ratingName}</span></p>
+                <p class="gm-champ-stats">${kills(p.kills)}<span class="gm-sep"> · </span>${hypeDelta(p.hypeChange)}<span class="visually-hidden"> ${ratingName}</span></p>
                 <p class="gm-champ-tier">${tierText(t.id, t.label)}${up ? html`<span class="gm-promo" title="Reached ${t.name} in this game">Rank up</span>` : ''}</p>
             </div>
         </li>`;
@@ -166,12 +170,12 @@ export function mount(root, ctx) {
         const shown = winners.slice(0, MAX_BODIES);
         const rest = winners.slice(MAX_BODIES);
         const teamKills = g.teams[0]?.kills ?? winners.reduce((s, p) => s + (p.kills || 0), 0);
-        const of = team ? `of ${fmtInt(g.teamCount)} teams` : `of ${fmtInt(g.teamCount)}`;
+        const of = html`of ${fig(fmtInt(g.teamCount))}${team ? ' teams' : ''}`;
         const size = shown.length > 1 ? 176 : 208;
         return html`<section class="card gm-win" aria-labelledby="gm-win-title">
             <div class="gm-win-head">
                 <h2 class="card-title" id="gm-win-title">${winners.length > 1 ? 'Winners' : 'Winner'}</h2>
-                <p class="card-sub"><span class="digits">#1</span> ${of} · ${fmtInt(teamKills)} ${teamKills === 1 ? 'kill' : 'kills'}${team ? ' as a team' : ''}</p>
+                <p class="card-sub">${fig('#1')} ${of} · ${fig(fmtInt(teamKills))} ${teamKills === 1 ? 'kill' : 'kills'}${team ? ' as a team' : ''}</p>
             </div>
             <div class="gm-stage" data-count="${shown.length}">
                 <div class="gm-rays" aria-hidden="true"></div>
@@ -212,7 +216,11 @@ export function mount(root, ctx) {
     }
 
     function placementsHtml(g) {
-        const solo = (Number(g.teamSize) || 1) <= 1 && g.teams.every((t) => (t.players || []).length <= 1);
+        const most = g.teams.reduce((m, t) => Math.max(m, (t.players || []).length), 0);
+        const size = Math.max(Number(g.teamSize) || 1, most);
+        const solo = size <= 1;
+        // team members line up in columns on wide screens: duos 2, trios 3, squads 2×2, bigger 3
+        const cols = solo ? 1 : (size === 3 || size > 4 ? 3 : 2);
         const isMe = playerMatcher(query.player);
         return html`<section class="card card-pad gm-places" aria-labelledby="gm-pl-title">
             <div class="card-head gm-pl-head">
@@ -222,7 +230,7 @@ export function mount(root, ctx) {
                 </div>
             </div>
             ${g.teams.length
-                ? html`<ol class="gm-rows" role="list">${g.teams.map((t) => rowHtml(t, g, solo, isMe))}</ol>`
+                ? html`<ol class="gm-rows gm-cols-${cols}" role="list">${g.teams.map((t) => rowHtml(t, g, solo, isMe))}</ol>`
                 : html`<div class="empty"><p class="empty-title">No placements</p><p class="empty-text">This game has no recorded teams.</p></div>`}
         </section>`;
     }
@@ -243,7 +251,7 @@ export function mount(root, ctx) {
                 ${older ? '' : CHEV_R}
             </a>`;
         };
-        return html`<nav class="gm-pager" aria-label="Older and newer games (bottom)">${tile(g.prev, 'prev')}${tile(g.next, 'next')}</nav>`;
+        return html`<nav class="gm-pager" aria-label="Browse games">${tile(g.prev, 'prev')}${tile(g.next, 'next')}</nav>`;
     }
 
     function loadingHtml() {
@@ -275,13 +283,11 @@ export function mount(root, ctx) {
     function missingHtml() {
         const shown = param.length > 18 ? `${param.slice(0, 17)}…` : param;
         return html`<section class="card card-pad gm-missing" aria-labelledby="gm-missing-title">
-            <div class="gm-missing-art" aria-hidden="true">
-                <span class="gm-block gm-missing-block"><span class="gm-missing-q">?</span></span>
-            </div>
+            <div class="mystery" aria-hidden="true"><span class="mystery-block"><span class="mystery-q">?</span></span></div>
             <h1 class="gm-missing-title" id="gm-missing-title">Game not found</h1>
             <p class="card-sub gm-missing-text">${valid
                 ? html`There's no ranked game <span class="gm-missing-n digits">#${number}</span>. It may have been unranked or removed, or the link is mistyped.`
-                : html`<span class="gm-missing-n">“${shown || ' '}”</span> isn't a game number. Game links look like <code>/rankings/history/42</code>.`}</p>
+                : html`<span class="gm-missing-n">“${shown || ' '}”</span> isn't a valid game number. Game numbers are whole numbers, like <span class="gm-missing-n digits">#42</span>.`}</p>
             <div class="gm-missing-actions">
                 ${Number.isFinite(latest) ? html`<a class="btn btn-primary" href="${gameHref(latest)}">Latest game <span class="digits">#${latest}</span></a>` : ''}
                 <a class="btn${Number.isFinite(latest) ? ' btn-ghost' : ' btn-primary'}" href="${href('/rankings/history')}">Game history</a>
@@ -292,7 +298,7 @@ export function mount(root, ctx) {
     function errorHtml() {
         return html`<section class="card card-pad gm-error">
             <div class="error-box" role="alert">
-                <p class="error-title">Couldn't load ${valid ? `game #${number}` : 'this game'}</p>
+                <p class="error-title">Couldn't load ${valid ? html`game ${fig(`#${number}`)}` : 'this game'}</p>
                 <p class="error-text">${failed?.message || 'Something went wrong.'}</p>
                 <div class="error-actions">
                     <button class="btn" type="button" data-app-retry>Try again</button>

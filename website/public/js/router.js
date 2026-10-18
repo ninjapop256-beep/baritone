@@ -5,7 +5,15 @@ let state = {
     hashMode: true,
     basePath: '',
     router: null,
+    hasBase: null, // memoised: is there a <base href> element? (looked up once, not per link)
 };
+
+// Hash mode: with a <base> element, a bare '#…' would resolve against the base, not this page,
+// so links carry the page's own path. Only the hash changes in hash mode, so this is stable.
+function hashPrefix() {
+    if (state.hasBase === null) state.hasBase = !!document.querySelector('base[href]');
+    return state.hasBase ? `${location.pathname}${location.search}` : '';
+}
 
 const trimSlash = (p) => (p.length > 1 ? p.replace(/\/+$/, '') : p) || '/';
 
@@ -47,10 +55,7 @@ function currentLocation() {
 /** App path → URL for an <a href>. Hash mode: '#/x'. History mode: '<base>/x'. */
 export function href(path = '/') {
     const p = String(path).startsWith('/') ? String(path) : `/${path}`;
-    if (state.hashMode) {
-        // with a <base> element, a bare '#…' would resolve against the base, not this page
-        return document.querySelector('base[href]') ? `${location.pathname}${location.search}#${p}` : `#${p}`;
-    }
+    if (state.hashMode) return `${hashPrefix()}#${p}`;
     return `${state.basePath}${p}`;
 }
 
@@ -128,7 +133,7 @@ export function createRouter({ mode, routes, onChange }) {
         if (baseEl) basePath = trimSlash(new URL(baseEl.href).pathname);
         if (basePath === '/') basePath = '';
     }
-    state = { hashMode, basePath, router: null };
+    state = { hashMode, basePath, router: null, hasBase: null };
 
     const compiled = compile(routes || []);
     let current = null;
