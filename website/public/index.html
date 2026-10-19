@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <!--app-base-->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>PVP EVENTS</title>
+    <meta name="description" content="Ranked Minecraft PvP events: live Hype rankings, game history and player profiles.">
+    <meta name="theme-color" content="#070b12">
+    <meta name="color-scheme" content="dark">
+    <link rel="icon" href="img/favicon.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- web fonts are added by js/main.js so a slow font host can't block the page -->
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/rankings.css">
+    <link rel="stylesheet" href="css/history.css">
+    <link rel="stylesheet" href="css/game.css">
+    <link rel="stylesheet" href="css/profile.css">
+    <script type="module" src="js/main.js"></script>
+</head>
+<body>
+    <a class="skip-link" href="#app">Skip to content</a>
+    <div class="world" aria-hidden="true"></div>
+    <div class="page">
+        <header id="topbar" class="topbar"></header>
+        <main id="app" tabindex="-1" aria-busy="true">
+            <section class="card card-pad"><div class="loading loading-page"><span class="visually-hidden">Loading…</span></div></section>
+            <noscript><section class="card card-pad"><p class="empty">This site needs JavaScript to show the rankings.</p></section></noscript>
+        </main>
+        <footer id="footer" class="footer"></footer>
+    </div>
+    <div id="sr-status" class="visually-hidden" role="status" aria-live="polite"></div>
+</body>
+</html>

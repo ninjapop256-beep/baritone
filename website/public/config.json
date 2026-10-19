@@ -1,0 +1,37 @@
+{
+    "siteName": "PVP EVENTS",
+    "brand": { "mark": "PVP", "text": "EVENTS" },
+    "tagline": "Ranked Minecraft PvP events",
+    "ratingName": "Hype",
+    "serverIp": "play.example.net",
+    "alternateServerIp": "hub.example.net",
+    "alternateServerCommand": "/events",
+    "discordUrl": "https://discord.gg/your-invite",
+    "storeUrl": "https://store.example.net",
+    "skins": "auto",
+    "modes": {
+        "battle-royale": { "name": "Battle Royale", "color": "gold" },
+        "bedwars": { "name": "Bed Wars", "color": "red" },
+        "skywars": { "name": "SkyWars", "color": "blue" }
+    },
+    "scoring": {
+        "startingHype": 0,
+        "minTeams": 4,
+        "maxPlacementPoints": 200,
+        "placementCurve": 2,
+        "winBonus": 60,
+        "killPoints": 10,
+        "fullLobbyTeams": 16,
+        "roundTo": 5,
+        "entryCost": { "COAL": 0, "COPPER": 10, "IRON": 20, "GOLD": 35, "EMERALD": 50, "DIAMOND": 70, "NETHERITE": 90 }
+    },
+    "tiers": [
+        { "id": "COAL", "name": "Coal", "min": 0 },
+        { "id": "COPPER", "name": "Copper", "min": 300 },
+        { "id": "IRON", "name": "Iron", "min": 800 },
+        { "id": "GOLD", "name": "Gold", "min": 1500 },
+        { "id": "EMERALD", "name": "Emerald", "min": 2500 },
+        { "id": "DIAMOND", "name": "Diamond", "min": 4000 },
+        { "id": "NETHERITE", "name": "Netherite", "min": 6000 }
+    ]
+}

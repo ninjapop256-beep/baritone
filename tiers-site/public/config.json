@@ -1,0 +1,44 @@
+{
+    "siteName": "BLOCKTIERS",
+    "tagline": "The Minecraft PvP tier list",
+    "description": "Players are tier-tested in eight gamemodes, placed from Tier 1 to Tier 5 and ranked on one overall leaderboard.",
+    "serverIp": "play.example.net",
+    "serverPort": 25565,
+    "serverVersions": "Java 1.21+ · Bedrock",
+    "testCommand": "/tiertest",
+    "discords": [
+        { "name": "Community", "url": "https://discord.gg/your-invite" },
+        { "name": "Tier testing", "url": "https://discord.gg/your-testing-invite" }
+    ],
+    "skins": "auto",
+    "regions": [
+        { "id": "NA", "name": "North America", "color": "red" },
+        { "id": "EU", "name": "Europe", "color": "green" },
+        { "id": "SA", "name": "South America", "color": "orange" },
+        { "id": "AS", "name": "Asia", "color": "purple" },
+        { "id": "OCE", "name": "Oceania", "color": "teal" },
+        { "id": "ME", "name": "Middle East", "color": "yellow" },
+        { "id": "AF", "name": "Africa", "color": "blue" }
+    ],
+    "modes": [
+        { "id": "vanilla", "name": "Vanilla", "icon": "vanilla", "color": "#b98cff", "blurb": "End crystals, anchors and full netherite." },
+        { "id": "uhc", "name": "UHC", "icon": "uhc", "color": "#ff5d6c", "blurb": "No natural regen: golden apples, lava and rods." },
+        { "id": "pot", "name": "Pot", "icon": "pot", "color": "#ff8ad8", "blurb": "Splash healing potions and diamond gear." },
+        { "id": "nethop", "name": "NethOP", "icon": "nethop", "color": "#9d7bff", "blurb": "Overpowered netherite kits with debuff potions." },
+        { "id": "smp", "name": "SMP", "icon": "smp", "color": "#3fd6b0", "blurb": "Survival-style kits: totems, pearls and shields." },
+        { "id": "sword", "name": "Sword", "icon": "sword", "color": "#62b6ff", "blurb": "Just a sword and armor. Pure aim and spacing." },
+        { "id": "axe", "name": "Axe", "icon": "axe", "color": "#7fd0ff", "blurb": "Axes, shields and shield-breaking timing." },
+        { "id": "mace", "name": "Mace", "icon": "mace", "color": "#c8c8d8", "blurb": "Wind charges, elytra and devastating mace smashes." }
+    ],
+    "points": { "HT1": 50, "LT1": 40, "HT2": 28, "LT2": 20, "HT3": 12, "LT3": 8, "HT4": 5, "LT4": 3, "HT5": 2, "LT5": 1 },
+    "retiredCounts": true,
+    "titles": [
+        { "id": "grand-champion", "name": "Grand Champion", "min": 350 },
+        { "id": "champion", "name": "Champion", "min": 200 },
+        { "id": "elite", "name": "Elite", "min": 100 },
+        { "id": "veteran", "name": "Veteran", "min": 50 },
+        { "id": "contender", "name": "Contender", "min": 20 },
+        { "id": "apprentice", "name": "Apprentice", "min": 10 },
+        { "id": "rookie", "name": "Rookie", "min": 0 }
+    ]
+}

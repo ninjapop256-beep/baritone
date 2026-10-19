@@ -1,0 +1,206 @@
+/* ==========================================================================
+   Game history page (/rankings/history). Classes are prefixed hs-.
+   ========================================================================== */
+
+.hs-board [hidden] { display: none !important; }
+.hs-heading { min-width: 0; }
+
+.hs-board {
+    --cols: 96px minmax(0, 1fr) 84px 74px 64px minmax(0, 300px);
+}
+
+.hs-rows { padding-top: 12px; }
+.hs-row { min-height: 74px; padding-block: 11px; }
+
+/* game number */
+.hs-game {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+}
+.hs-label {
+    font: 700 8.5px/1.15 var(--font-label);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--label);
+    white-space: nowrap;
+}
+.hs-label.is-latest {
+    color: var(--good);
+    text-shadow: 0 0 10px rgba(95, 240, 138, .35);
+}
+.hs-num {
+    font-size: 29px;
+    line-height: .85;
+    color: var(--text);
+    text-shadow: var(--shadow-hard);
+    white-space: nowrap;
+}
+.hs-num.is-xlong { font-size: 22px; } /* #123456 */
+
+/* event: mode pill + team size, then map · date · relative */
+.hs-event {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.hs-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+}
+.hs-sub {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13.5px;
+    color: var(--muted);
+    text-shadow: var(--shadow-soft);
+}
+.hs-map { color: rgba(244, 247, 251, .82); }
+/* dates in the numbers font: Pixelify's 5 reads like an S ('Oct 15' → 'Oct 1S') */
+.hs-sub time,
+.hs-ago {
+    font-family: var(--font-num);
+    font-size: 1.24em;
+    line-height: 1;
+    letter-spacing: .02em;
+}
+.hs-dot { padding: 0 2px; color: var(--faint); }
+
+.hs-dur { font-size: 23px; color: var(--text); text-shadow: var(--shadow-soft); }
+.hs-stat { color: rgba(244, 247, 251, .74); }
+
+/* winners: heads + names */
+.hs-winners {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-left: 18px;
+}
+.hs-head-winners { padding-left: 18px; }
+.hs-heads { flex: none; }
+.hs-heads .skin-head { border-radius: 4px; }
+.hs-extra {
+    display: grid;
+    place-items: center;
+    min-width: 24px;
+    height: 24px;
+    margin-left: -6px;
+    padding: 0 4px;
+    border-radius: 5px;
+    font: 400 15px/1 var(--font-num);
+    color: var(--text);
+    background: rgba(30, 34, 48, .95);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, .35), 0 2px 6px rgba(0, 0, 0, .35);
+}
+.hs-names {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: 700 14.5px/1.2 var(--font-pixel);
+    color: var(--gold);
+    text-shadow: var(--shadow-hard);
+}
+a.hs-row:hover .hs-names { color: #ffe08f; }
+
+/* games that arrived while the page was open */
+.hs-row.is-new { animation: hs-new 2.4s ease-out; }
+@keyframes hs-new {
+    0% { background-color: rgba(95, 240, 138, .16); border-color: rgba(95, 240, 138, .45); transform: translateY(-6px); }
+    20% { transform: none; }
+    100% { background-color: var(--panel-soft); border-color: var(--line-soft); }
+}
+
+.hs-state:empty { display: none; }
+.hs-state .board-body { padding-top: 14px; }
+.hs-skeleton { padding-top: 14px; }
+
+/* load older games */
+.hs-foot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 20px 26px;
+    text-align: center;
+}
+.hs-count {
+    font-size: 13.5px;
+    color: var(--muted);
+    text-shadow: var(--shadow-soft);
+}
+.hs-count .digits { font-size: 1.3em; line-height: 1; color: var(--text); }
+.hs-more { min-width: 200px; }
+.hs-more.is-busy { cursor: progress; opacity: .75; }
+.hs-more.is-busy::before {
+    content: '';
+    width: 10px;
+    height: 10px;
+    background: currentColor;
+    animation: hs-blink .8s steps(2, jump-none) infinite;
+}
+@keyframes hs-blink { from { opacity: 1; } to { opacity: .2; } }
+.hs-more-error {
+    max-width: 52ch;
+    font-size: 13.5px;
+    color: #ffc2c2;
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 960px) {
+    .hs-board { --cols: 82px minmax(0, 1.3fr) 66px 52px minmax(0, 1fr); }
+    .hs-winners, .hs-head-winners { padding-left: 12px; }
+    /* hidden columns stay in the row link's accessible name (visually hidden, not display:none) */
+    .hs-row .hide-md {
+        display: block !important;
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+    }
+}
+
+@media (max-width: 640px) {
+    .hs-board { --cols: 62px minmax(0, 1fr) auto; }
+    .hs-head-winners { padding-left: 0; text-align: right; }
+    .hs-row { min-height: 70px; padding-block: 10px; }
+    .hs-label { font-size: 7.5px; letter-spacing: .08em; white-space: normal; }
+    .hs-num { font-size: 25px; }
+    .hs-num.is-long { font-size: 20px; }
+    .hs-num.is-xlong { font-size: 15px; }
+    .hs-event { gap: 7px; }
+    .hs-chips { gap: 5px; }
+    .hs-chips .mode-pill,
+    .hs-chips .chip { height: 22px; padding: 0 8px; }
+    /* map · relative time, wrapping between them rather than cutting the time off;
+       the full date is on the game page */
+    .hs-sub { font-size: 12.5px; white-space: normal; }
+    .hs-map, .hs-ago { white-space: nowrap; }
+    .hs-sub time, .hs-sub time + .hs-dot { display: none; }
+    .hs-winners { justify-content: flex-end; padding-left: 0; }
+    .hs-row .hide-sm,
+    .hs-names {
+        display: block !important;
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+    }
+    .hs-heads .skin-head { width: 22px; height: 22px; }
+    .hs-foot { padding: 6px 12px 20px; }
+    .hs-more { width: 100%; max-width: 320px; }
+}
+
+@media (max-width: 380px) {
+    .hs-board { --cols: 54px minmax(0, 1fr) auto; }
+    .hs-heads .skin-head + .skin-head { margin-left: -9px; }
+}
