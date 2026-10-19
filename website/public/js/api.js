@@ -14,9 +14,8 @@ const url = (path) => new URL(path, document.baseURI).toString();
 async function getJson(path) {
     let res;
     try {
-        // X-Soft-404: the server answers "not found" as 200 { notFound: true }, so a missing
-        // player or game doesn't print a network error in the browser console
-        res = await fetch(url(path), { cache: 'no-store', headers: { Accept: 'application/json', 'X-Soft-404': '1' } });
+        // no-cache: the browser revalidates with the ETag, so an unchanged poll is a tiny 304
+        res = await fetch(url(path), { cache: 'no-cache', headers: { Accept: 'application/json' } });
     } catch (cause) {
         const err = httpError(0, 'Could not reach the server. Check your connection and try again.');
         err.cause = cause;
@@ -25,7 +24,6 @@ async function getJson(path) {
     let body = null;
     try { body = await res.json(); } catch { /* non-JSON body */ }
     if (!res.ok) throw httpError(res.status, body?.error || (res.status === 404 ? 'Not found' : `Request failed (${res.status})`));
-    if (body && body.notFound === true) throw httpError(404, body.error || 'Not found');
     if (body === null) throw httpError(res.status, 'The server sent an invalid response.');
     return body;
 }

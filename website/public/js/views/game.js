@@ -51,7 +51,8 @@ export function mount(root, ctx) {
     const live = !!ctx.live;
     const href = ctx.href;
     const gameHref = (n) => href(`/rankings/history/${n}`);
-    const profileHref = (p) => href(`/profile/${encodeURIComponent(p.name || p.uuid || '')}`);
+    // names are the ones used in this game; the uuid opens the right profile after a rename
+    const profileHref = (p) => href(`/profile/${encodeURIComponent(p.name || p.uuid || '')}${p.uuid ? `?id=${encodeURIComponent(p.uuid)}` : ''}`);
 
     const param = String(ctx.params?.number ?? '').trim();
     const number = /^\d{1,15}$/.test(param) ? Number(param) : NaN;

@@ -13,7 +13,8 @@ const FIRST_ROWS = 60; // first paint renders this many rows, the rest follow in
 const ROW_CHUNK = 400;
 const HIGHLIGHT = 'rk-match';
 
-const profilePath = (name) => `/profile/${encodeURIComponent(name)}`;
+// ?id= makes the link open this exact player even if someone else uses (or used) the name
+const profilePath = (p) => `/profile/${encodeURIComponent(p.name)}?id=${encodeURIComponent(p.uuid)}`;
 
 // Small pixel crown over the #1 card (original art).
 const CROWN = html`<svg class="rk-crown" viewBox="0 0 11 7" width="33" height="21" aria-hidden="true" shape-rendering="crispEdges"><path fill="#7a4a06" d="M0 1h1v6H0zM10 1h1v6h-1zM1 6h9v1H1z"/><path fill="#ffcf53" d="M1 2h1v4H1zM9 2h1v4H9zM2 3h1v3H2zM8 3h1v3H8zM3 2h1v4H3zM7 2h1v4H7zM4 3h3v3H4zM5 0h1v3H5z"/><path fill="#fff3b8" d="M1 2h1v1H1zM5 0h1v1H5zM9 2h1v1H9z"/><path fill="#ff6b9a" d="M5 4h1v1H5z"/></svg>`;
@@ -36,6 +37,8 @@ export function mount(root, ctx) {
     let failed = null;        // initial load error
     let q = (ctx.query.q || '').trim();
     let tier = parseTier(ctx.query.tier);
+    // ?go=1: Enter in the top-bar search on another page; open the player once the ladder loads
+    let pendingGo = ctx.query.go === '1' && !!q;
     let pollTimer = null;
     let syncTimer = null;
     let announceTimer = null;
@@ -119,7 +122,7 @@ export function mount(root, ctx) {
 
     // ---- markup ----
     function rowHtml(p) {
-        return html`<a class="row rk-row" href="${link(profilePath(p.name))}">
+        return html`<a class="row rk-row" href="${link(profilePath(p))}">
             <span class="rk-pos${p.position >= 10000 ? ' is-xlong' : (p.position >= 1000 ? ' is-long' : '')}">${placeText(p.position)}</span>
             <span class="cell rk-player">
                 <span class="rk-skin-ph" data-skin="${p.skin || p.uuid || p.name}" aria-hidden="true"></span>
@@ -138,7 +141,7 @@ export function mount(root, ctx) {
         const sizes = { 1: 192, 2: 160, 3: 160 };
         return html`<ol class="rk-podium rk-podium-${top.length}" aria-label="Top ${top.length}">
             ${top.map((p) => html`<li class="rk-pod rk-pod-${p.position}">
-                <a class="rk-pod-card tier-${tierClass(p.tier)}" href="${link(profilePath(p.name))}">
+                <a class="rk-pod-card tier-${tierClass(p.tier)}" href="${link(profilePath(p))}">
                     ${p.position === 1 ? CROWN : ''}
                     <span class="rk-pod-top">
                         <span class="rk-pod-name">${p.name}</span>
@@ -302,7 +305,7 @@ export function mount(root, ctx) {
 
     function syncQuery() {
         clearTimeout(syncTimer);
-        syncTimer = setTimeout(() => { if (alive) ctx.setQuery({ q: q || null, tier: tier || null }); }, QUERY_SYNC_MS);
+        syncTimer = setTimeout(() => { if (alive) ctx.setQuery({ q: q || null, tier: tier || null, go: null }); }, QUERY_SYNC_MS);
     }
 
     // ---- data ----
@@ -319,6 +322,14 @@ export function mount(root, ctx) {
                 data = { ...next, players: Array.isArray(next.players) ? next.players : [] };
                 pruneCache();
                 render();
+                if (pendingGo) {
+                    pendingGo = false;
+                    // replace: Back returns to the page the search started on, not to this list
+                    if (!openMatch(q, { replace: true })) {
+                        ctx.setQuery({ go: null });
+                        announce();
+                    }
+                }
             } catch (err) {
                 if (!alive) return;
                 if (data) { setLive(false); return; } // keep showing stale data while polling fails
@@ -363,6 +374,17 @@ export function mount(root, ctx) {
         announce();
     });
 
+    // Opens the profile for an exact (any case) or single match; false when there is none.
+    function openMatch(value, opts) {
+        if (!data || !value) return false;
+        const v = value.toLowerCase();
+        const exact = data.players.find((p) => p.name.toLowerCase() === v);
+        const list = matches();
+        const target = exact || (list.length === 1 ? list[0] : null);
+        if (target) ctx.navigate(profilePath(target), opts);
+        return !!target;
+    }
+
     shell.setSearch(q);
     const offSearch = shell.onSearch(({ type, value }) => {
         if (type === 'input') {
@@ -377,13 +399,7 @@ export function mount(root, ctx) {
         q = value;
         syncQuery();
         render();
-        if (!data || !value) return true;
-        const v = value.toLowerCase();
-        const exact = data.players.find((p) => p.name.toLowerCase() === v);
-        const list = matches();
-        const target = exact || (list.length === 1 ? list[0] : null);
-        if (target) ctx.navigate(profilePath(target.name));
-        else announce();
+        if (!openMatch(value) && data && value) announce();
         return true;
     });
 

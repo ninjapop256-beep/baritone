@@ -53,11 +53,30 @@ const MIME = {
     '.webm': 'video/webm'
 };
 const COMPRESSIBLE = new Set(['.html', '.css', '.js', '.mjs', '.json', '.map', '.webmanifest', '.svg', '.txt', '.xml']);
-const NO_CACHE = new Set(['.html', '.json', '.webmanifest']);
+// Revalidated on every load (cheap 304s). JS and CSS live at fixed URLs, so caching them for
+// an hour could mix old and new modules after an upgrade.
+const NO_CACHE = new Set(['.html', '.json', '.webmanifest', '.js', '.mjs', '.css']);
+
+// Defence in depth: only our own scripts, Google Fonts and mc-heads.net skins; no framing.
+// To embed the site in an iframe on your own domain, change frame-ancestors (and drop X-Frame-Options).
+const CSP = [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com", // inline: style="--p:…" on tier bars
+    'font-src https://fonts.gstatic.com',
+    "img-src 'self' data: blob: https://mc-heads.net",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'"
+].join('; ');
 
 const BASE_HEADERS = {
     'X-Content-Type-Options': 'nosniff',
-    'Referrer-Policy': 'strict-origin-when-cross-origin'
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Content-Security-Policy': CSP,
+    'X-Frame-Options': 'DENY'
 };
 
 class HttpError extends Error {
@@ -117,6 +136,23 @@ function sendJson(req, res, status, data, headers = {}, gzipBody = null) {
     }, body, { compressible: true, gzipBody });
 }
 
+// 200 for API reads: ETag from the body, so polling clients that send If-None-Match get a
+// tiny 304 while nothing changed (browsers do this themselves with fetch cache: 'no-cache').
+function sendFresh(req, res, data, { gz = null, etag = null } = {}) {
+    const body = typeof data === 'string' ? data : JSON.stringify(data);
+    const tag = etag || `"${sha1(body)}"`;
+    const gzTag = tag.replace(/"$/, '-gz"');
+    const big = Buffer.byteLength(body) >= GZIP_MIN;
+    const headers = { 'Cache-Control': 'no-cache', ETag: big && acceptsGzip(req) ? gzTag : tag };
+    if (etagMatches(req, tag, gzTag)) {
+        const h304 = { ...BASE_HEADERS, ...headers };
+        if (big) h304.Vary = 'Accept-Encoding';
+        res.writeHead(304, h304);
+        return res.end();
+    }
+    return sendJson(req, res, 200, body, headers, gz);
+}
+
 function sendText(req, res, status, text, headers = {}) {
     send(req, res, status, {
         'Content-Type': 'text/plain; charset=utf-8',
@@ -163,11 +199,6 @@ function readBody(req, limit) {
         req.on('error', (err) => finish(new HttpError(400, `Could not read body: ${err.message}`)));
         req.on('close', () => finish(new HttpError(400, 'Request aborted')));
     });
-}
-
-// Opt-in for GET/HEAD clients: `X-Soft-404: 1` turns an API 404 into 200 { error, notFound: true }.
-function wantsSoft404(req) {
-    return (req.method === 'GET' || req.method === 'HEAD') && /^(1|true)$/i.test(String(req.headers['x-soft-404'] || ''));
 }
 
 function isSpaRoute(p) {
@@ -234,7 +265,7 @@ export async function createApp(options = {}) {
         if (!state.rankings) {
             const json = JSON.stringify(rankingsResponse(state.league));
             const buf = Buffer.from(json, 'utf8');
-            state.rankings = { json, gz: buf.length >= GZIP_MIN ? zlib.gzipSync(buf) : null };
+            state.rankings = { json, etag: `"${sha1(buf)}"`, gz: buf.length >= GZIP_MIN ? zlib.gzipSync(buf) : null };
         }
         return state.rankings;
     };
@@ -249,7 +280,8 @@ export async function createApp(options = {}) {
     }
 
     function parseNumber(segment) {
-        return /^\d{1,9}$/.test(segment) ? Number(segment) : null;
+        const n = /^\d{1,15}$/.test(segment) ? Number(segment) : NaN;
+        return Number.isSafeInteger(n) && n > 0 ? n : null;
     }
 
     async function handleApi(req, res, segments, query) {
@@ -266,21 +298,21 @@ export async function createApp(options = {}) {
 
         if (resource === 'health' && id === undefined) {
             allow(['GET']);
-            return sendJson(req, res, 200, healthResponse(state.league, mode));
+            return sendFresh(req, res, healthResponse(state.league, mode));
         }
         if (resource === 'config' && id === undefined) {
             allow(['GET']);
-            return sendJson(req, res, 200, configJson);
+            return sendFresh(req, res, configJson);
         }
         if (resource === 'rankings' && id === undefined) {
             allow(['GET']);
             const cached = rankingsCache();
-            return sendJson(req, res, 200, cached.json, {}, cached.gz);
+            return sendFresh(req, res, cached.json, { gz: cached.gz, etag: cached.etag });
         }
         if (resource === 'games' && id === undefined) {
             allow(['GET', 'POST']);
             if (method === 'GET') {
-                return sendJson(req, res, 200, gamesPage(state.league, {
+                return sendFresh(req, res, gamesPage(state.league, {
                     before: query.get('before') ?? undefined,
                     limit: query.get('limit') ?? undefined
                 }));
@@ -305,7 +337,11 @@ export async function createApp(options = {}) {
                 throw err;
             }
             rebuild();
-            log.info?.(`[api] stored game #${number}`);
+            if (result.game.number !== undefined && result.game.number !== number) {
+                log.info?.(`[api] game #${result.game.number} was already taken by a different game; stored as #${number}`);
+            } else {
+                log.info?.(`[api] stored game #${number}`);
+            }
             return sendJson(req, res, 201, { number }, { Location: `/api/games/${number}` });
         }
         if (resource === 'games' && id !== undefined) {
@@ -314,7 +350,7 @@ export async function createApp(options = {}) {
             if (method === 'GET') {
                 const game = number === null ? null : gameResponse(state.league, number);
                 if (!game) throw new HttpError(404, `Game #${id} not found`);
-                return sendJson(req, res, 200, game);
+                return sendFresh(req, res, game);
             }
             authorize(req);
             if (number === null || !(await store.remove(number))) throw new HttpError(404, `Game #${id} not found`);
@@ -327,7 +363,7 @@ export async function createApp(options = {}) {
             allow(['GET']);
             const profile = profileResponse(state.league, id, { now: now() });
             if (!profile) throw new HttpError(404, `Player "${id}" not found`);
-            return sendJson(req, res, 200, profile);
+            return sendFresh(req, res, profile);
         }
         throw new HttpError(404, 'Unknown API endpoint');
     }
@@ -399,7 +435,9 @@ export async function createApp(options = {}) {
         }
         const parts = decoded.split(/[\\/]+/);
         if (decoded.includes('\0') || parts.includes('..')) throw new HttpError(400, 'Invalid path');
-        if (parts.some((p) => p.startsWith('.'))) throw new HttpError(404, 'Not found');
+        const spa = isSpaRoute(decoded);
+        // dotfiles stay private; app routes are exempt (Bedrock names like /profile/.Steve)
+        if (!spa && parts.some((p) => p.startsWith('.'))) throw new HttpError(404, 'Not found');
 
         if (decoded === '/' || decoded === '/index.html') return serveShell(req, res, 200);
         const file = path.resolve(root, `.${decoded}`);
@@ -407,7 +445,7 @@ export async function createApp(options = {}) {
         const info = decoded.endsWith('/') ? null : await statFile(file);
         if (info) return serveFile(req, res, file, info);
         const last = parts[parts.length - 1] || '';
-        if (!isSpaRoute(decoded) && path.extname(last)) throw new HttpError(404, 'Not found');
+        if (!spa && path.extname(last)) throw new HttpError(404, 'Not found');
         // Everything else is an app route; the client router renders "Page not found".
         return serveShell(req, res, 200);
     }
@@ -455,11 +493,7 @@ export async function createApp(options = {}) {
                 if (status === 401) headers['WWW-Authenticate'] = 'Bearer';
                 if (status === 413) headers.Connection = 'close';
                 const message = err instanceof HttpError ? err.message : 'Internal server error';
-                if (isApi && status === 404 && wantsSoft404(req)) {
-                    // The web UI asks for not-found as 200 + { notFound: true } so browsers
-                    // don't log a console error on every "Player not found" page.
-                    sendJson(req, res, 200, { error: message, notFound: true }, headers);
-                } else if (isApi) {
+                if (isApi) {
                     const body = { error: message };
                     if (err.details) body.details = err.details;
                     sendJson(req, res, status, body, headers);
@@ -573,7 +607,7 @@ async function main() {
         ''
     ].join('\n'));
     if (!demo && league.games.length === 0) {
-        console.log('  No games yet. Try "npm run demo", or seed live data: node scripts/seed.js --out data/games.json --now now\n');
+        console.log(`  No games yet. Try "npm run demo", or seed live data: node scripts/seed.js --out "${app.store.file}" --now now\n`);
     }
 
     let closing = false;

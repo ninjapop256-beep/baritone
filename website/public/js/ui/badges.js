@@ -37,7 +37,8 @@ export function tierBar(tierId, progress, label = '') {
 export function modePill(game) {
     const g = game || {};
     const name = String(g.modeName || mapName(g.mode) || 'Event').toUpperCase();
-    return html`<span class="mode-pill mode-${modeColor(g.modeColor)}">${name}</span>`;
+    // inner span: lets a long custom name end in an ellipsis (the title then shows all of it)
+    return html`<span class="mode-pill mode-${modeColor(g.modeColor)}"${name.length > 18 ? html` title="${name}"` : ''}><span>${name}</span></span>`;
 }
 
 /** Neutral chip: <span class="chip cls">text</span> */

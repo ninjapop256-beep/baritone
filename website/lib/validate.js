@@ -18,9 +18,10 @@ const MIN_TIME = Date.UTC(2011, 10, 18);
 const FUTURE_SLACK = 24 * 60 * 60 * 1000;
 const ELIM_SLACK = 60 * 1000;
 
-const NAME_RE = /^[A-Za-z0-9_]{1,16}$/;
+// Java names, optionally after one symbol: Geyser/Floodgate prefix Bedrock names ('.Steve').
+const NAME_RE = /^[!-/:-@[-^`{-~]?[A-Za-z0-9_]{1,16}$/;
 const MODE_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
-const MAP_RE = /^[a-z0-9][a-z0-9_-]{0,47}$/;
+const MAP_MAX = 48;
 const SKIN_RE = /^[A-Za-z0-9_-]{1,128}$/;
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -78,10 +79,15 @@ export function validateGame(raw, { now = Date.now() } = {}) {
         }
     }
 
+    // map is display-only: "Cherry Grove" is stored as the slug "cherry_grove"; a name with no
+    // usable letters is left out rather than failing the game
     if (raw.map !== undefined && raw.map !== null && raw.map !== '') {
-        const map = typeof raw.map === 'string' ? raw.map.trim().toLowerCase() : null;
-        if (!map || !MAP_RE.test(map)) bad('map', 'must be a slug such as "cherry_grove" (letters, digits, "-" or "_", max 48)', raw.map);
-        else game.map = map;
+        if (typeof raw.map !== 'string') {
+            bad('map', 'must be a string such as "cherry_grove" or "Cherry Grove"', raw.map);
+        } else {
+            const map = raw.map.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_').slice(0, MAP_MAX).replace(/^[_-]+|[_-]+$/g, '');
+            if (map) game.map = map;
+        }
     }
 
     // teamSize
@@ -129,10 +135,11 @@ export function validateGame(raw, { now = Date.now() } = {}) {
     } else if (raw.teams.length > LIMITS.maxTeams) {
         bad('teams', `has more than ${LIMITS.maxTeams} teams`, raw.teams.length);
     } else {
-        const n = raw.teams.length;
         const placements = new Map();
         const uuids = new Map();
         let totalPlayers = 0;
+        // the best (lowest) placement wins; gaps are fine (e.g. an empty team was left out)
+        const best = Math.min(...raw.teams.map((t) => (isObj(t) && isInt(t.placement) && t.placement >= 1 ? t.placement : Infinity)));
 
         raw.teams.forEach((team, ti) => {
             const tp = `teams[${ti}]`;
@@ -142,8 +149,8 @@ export function validateGame(raw, { now = Date.now() } = {}) {
             }
             const out = { placement: null, eliminatedAt: null, players: [] };
 
-            if (!isInt(team.placement) || team.placement < 1 || team.placement > n) {
-                bad(`${tp}.placement`, `must be an integer from 1 (winner) to ${n} (number of teams)`, team.placement);
+            if (!isInt(team.placement) || team.placement < 1 || team.placement > LIMITS.maxTeams) {
+                bad(`${tp}.placement`, `must be an integer from 1 (winner) to ${LIMITS.maxTeams}; lower is better`, team.placement);
             } else if (placements.has(team.placement)) {
                 bad(`${tp}.placement`, `duplicates teams[${placements.get(team.placement)}]; placements must be unique`, team.placement);
             } else {
@@ -151,9 +158,9 @@ export function validateGame(raw, { now = Date.now() } = {}) {
                 out.placement = team.placement;
             }
 
-            const el = team.eliminatedAt;
-            if (out.placement === 1) {
-                if (el !== undefined && el !== null && el !== 0) bad(`${tp}.eliminatedAt`, 'must be null for the winning team', el);
+            const el = team.eliminatedAt === 0 ? null : team.eliminatedAt; // 0: Java's "not set"
+            if (out.placement === best) {
+                if (el !== undefined && el !== null) bad(`${tp}.eliminatedAt`, 'must be null for the winning team', el);
             } else if (el !== undefined && el !== null) {
                 if (!isInt(el)) {
                     bad(`${tp}.eliminatedAt`, 'must be epoch milliseconds or null', el);
@@ -190,7 +197,7 @@ export function validateGame(raw, { now = Date.now() } = {}) {
                         player.uuid = uuid;
                     }
                     if (typeof p.name !== 'string' || !NAME_RE.test(p.name)) {
-                        bad(`${pp}.name`, 'must be 1-16 characters of A-Z, a-z, 0-9 or _', p.name);
+                        bad(`${pp}.name`, 'must be 1-16 characters of A-Z, a-z, 0-9 or _ (optionally after one symbol, e.g. a Bedrock "." prefix)', p.name);
                     } else {
                         player.name = p.name;
                     }
@@ -198,8 +205,10 @@ export function validateGame(raw, { now = Date.now() } = {}) {
                         if (typeof p.skin !== 'string' || !SKIN_RE.test(p.skin)) bad(`${pp}.skin`, 'must be a skin id (letters, digits, "-" or "_")', p.skin);
                         else player.skin = p.skin;
                     }
-                    if (!isInt(p.kills) || p.kills < 0 || p.kills > LIMITS.maxKills) {
-                        bad(`${pp}.kills`, `is required: an integer 0-${LIMITS.maxKills}`, p.kills);
+                    if (p.kills === undefined || p.kills === null) {
+                        player.kills = 0; // serializers often leave out zero values
+                    } else if (!isInt(p.kills) || p.kills < 0 || p.kills > LIMITS.maxKills) {
+                        bad(`${pp}.kills`, `must be an integer 0-${LIMITS.maxKills}`, p.kills);
                     } else {
                         player.kills = p.kills;
                     }
@@ -227,6 +236,7 @@ export function validateGame(raw, { now = Date.now() } = {}) {
     if (errors.length) return { ok: false, game: null, errors };
 
     teamsOut.sort((a, b) => a.placement - b.placement);
+    teamsOut.forEach((t, i) => { t.placement = i + 1; }); // stored as 1..n
     game.teams = teamsOut;
     return { ok: true, game, errors: [] };
 }

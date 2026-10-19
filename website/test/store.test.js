@@ -5,7 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { StoreError, createMemoryStore, openFileStore, parseGamesJson } from '../lib/store.js';
-import { range, soloGame } from './helpers.js';
+import { buildLeague } from '../public/js/shared/league.js';
+import { MIN, T0, range, soloGame } from './helpers.js';
 
 const tmpDir = () => mkdtemp(path.join(os.tmpdir(), 'pvp-store-'));
 
@@ -35,17 +36,45 @@ test('file store: missing file is empty, add auto-numbers and persists atomicall
     }
 });
 
-test('file store: duplicates by number and by fingerprint', async () => {
+test('file store: resends are duplicates; a different game with a taken number gets the next one', async () => {
     const dir = await tmpDir();
     try {
         const store = await openFileStore(dir);
         await store.add(soloGame(5, range(1, 4)));
-        await assert.rejects(store.add(soloGame(5, range(1, 4), {}, { startedAt: 9e12 })),
+        // Same game re-sent, with or without its number (plugin retry) -> duplicate of #5.
+        await assert.rejects(store.add(soloGame(5, range(1, 4))),
             (err) => err instanceof StoreError && err.code === 'DUPLICATE' && err.number === 5);
-        // Same game re-sent without a number (plugin retry) -> duplicate of #5.
         const { number: _n, ...retry } = soloGame(5, range(1, 4));
         await assert.rejects(store.add(retry), (err) => err.code === 'DUPLICATE' && err.number === 5);
-        assert.equal(store.count, 1);
+        // A different game that reuses #5 (counter reset, second arena) is kept as #6.
+        const other = soloGame(5, range(5, 8), {}, { startedAt: T0 + 999 * MIN });
+        assert.equal(await store.add(other), 6);
+        await assert.rejects(store.add(other), (err) => err.code === 'DUPLICATE' && err.number === 6);
+        assert.deepEqual(store.all().map((g) => g.number), [5, 6]);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test('file store: missing and repeated numbers in games.json are numbered like the site shows them', async () => {
+    const dir = await tmpDir();
+    try {
+        const { number: _a, ...late } = soloGame(9, range(1, 4), {}, { startedAt: T0 + 300 * MIN });
+        const early = soloGame(1, range(2, 5), {}, { startedAt: T0 + 100 * MIN }); // repeats #1
+        await writeFile(path.join(dir, 'games.json'), JSON.stringify([soloGame(1, range(1, 4)), late, early, { ...soloGame(4, range(1, 4)), number: '4' }]));
+        const store = await openFileStore(dir);
+        // #1 and "4" keep theirs; the repeat and the unnumbered game follow the max, oldest first
+        assert.deepEqual(store.all().map((g) => g.number), [1, 6, 5, 4]);
+        const league = buildLeague(store.all(), {}, { now: T0 + 1000 * MIN });
+        assert.deepEqual(league.games.map((g) => g.number).sort((a, b) => a - b), [1, 4, 5, 6]);
+        assert.equal(league.gameByNumber.get(6).startedAt, late.startedAt);
+        // the next game and DELETE use the same numbers the site shows
+        const { number: _b, ...next } = soloGame(0, range(1, 4), {}, { startedAt: T0 + 500 * MIN });
+        assert.equal(await store.add(next), 7);
+        assert.equal(await store.remove(5), true);
+        assert.deepEqual(store.all().map((g) => g.number), [1, 6, 4, 7]);
+        const saved = JSON.parse(await readFile(path.join(dir, 'games.json'), 'utf8'));
+        assert.deepEqual(saved.map((g) => g.number), [1, 6, 4, 7]);
     } finally {
         await rm(dir, { recursive: true, force: true });
     }

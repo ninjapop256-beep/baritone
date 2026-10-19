@@ -20,6 +20,17 @@ const VIEWS = {
 
 const app = document.getElementById('app');
 let booted = false;
+
+// Web fonts, added from here rather than a <link> in <head>: a stylesheet in <head> blocks
+// rendering and this module until it loads, so a slow or blocked Google Fonts would stall the
+// whole site. Loaded this way, pages render at once in fallback fonts and swap when ready.
+const FONTS = 'https://fonts.googleapis.com/css2?family=Jersey+10&family=Pixelify+Sans:wght@400..700&family=Silkscreen:wght@400;700&display=swap';
+if (!document.querySelector(`link[href="${FONTS}"]`)) {
+    const fonts = document.createElement('link');
+    fonts.rel = 'stylesheet';
+    fonts.href = FONTS;
+    document.head.append(fonts);
+}
 let linkTo = (path) => `#${path}`; // replaced by the router's href once loaded
 
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -64,8 +75,18 @@ window.addEventListener('unhandledrejection', (ev) => {
 
 async function detectMode() {
     const params = new URLSearchParams(location.search);
-    if (params.get('demo') === '1' || params.get('demo') === 'true') return 'demo';
     const meta = document.querySelector('meta[name="app-mode"]')?.content;
+    if (params.get('demo') === '1' || params.get('demo') === 'true') {
+        // demo data uses #-routes: /profile/X?demo=1 on the live server → /?demo=1#/profile/X
+        const path = location.pathname.replace(/\/index\.html$/, '/');
+        if (meta === 'live' && path !== '/' && !location.hash.startsWith('#/')) {
+            params.delete('demo');
+            const rest = params.toString();
+            location.replace(`/?demo=1#${path}${rest ? `?${rest}` : ''}`);
+            return new Promise(() => {}); // navigating away
+        }
+        return 'demo';
+    }
     if (meta === 'live' || meta === 'demo') return meta;
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 2500);

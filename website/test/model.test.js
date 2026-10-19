@@ -136,6 +136,34 @@ test('findPlayer / profileResponse lookup by name (any case) and uuid (any forma
     assert.equal(profileResponse(league, null), null);
     assert.equal(profileResponse(league, uuidFor(999)), null);
     assert.equal(findPlayer(league, name).uuid, uuid);
+    assert.equal(profileResponse(league, uuid).player.key, name);
+});
+
+test('findPlayer: renames, shared names and names that differ only in case', () => {
+    const u = uuidFor;
+    const g = (n, at, names) => makeGame(n, names.map(([i, name]) => [{ i, name }]), { teamSize: 1, startedAt: T0 + at * DAY });
+    const others = [[20, 'B'], [21, 'C'], [22, 'D']];
+    const L = buildLeague([
+        g(1, 1, [[1, 'OldName'], ...others]), // player 1 renames OldName -> NewName
+        g(2, 2, [[1, 'NewName'], ...others]),
+        g(3, 3, [[2, 'Steve'], ...others]), // player 2 is Steve, then player 3 takes the name
+        g(4, 4, [[3, 'Steve'], ...others]),
+        g(5, 5, [[4, 'WWW'], [5, 'www'], ...others.slice(1)]) // offline mode: case-only twins
+    ], DEFAULT_CONFIG, { now: T0 + 6 * DAY });
+    assert.equal(findPlayer(L, 'oldname').uuid, u(1)); // an old name still opens the profile
+    assert.equal(findPlayer(L, 'NewName').uuid, u(1));
+    assert.equal(findPlayer(L, 'Steve').uuid, u(3)); // the most recent user owns a shared name
+    assert.equal(findPlayer(L, 'WWW').uuid, u(4)); // exact case first
+    assert.equal(findPlayer(L, 'www').uuid, u(5));
+    // the canonical key: the name when it leads back to the player, else the uuid
+    assert.equal(profileResponse(L, u(1)).player.key, 'NewName');
+    assert.equal(profileResponse(L, u(3)).player.key, 'Steve');
+    assert.equal(profileResponse(L, u(2)).player.key, u(2));
+    assert.equal(profileResponse(L, u(4)).player.key, 'WWW');
+    assert.equal(profileResponse(L, u(5)).player.key, 'www');
+    // a current name beats someone else's old name
+    const L2 = buildLeague([g(1, 1, [[1, 'Alex'], ...others]), g(2, 2, [[1, 'Alex2'], ...others]), g(3, 3, [[2, 'Alex'], ...others])], DEFAULT_CONFIG);
+    assert.equal(findPlayer(L2, 'alex').uuid, u(2));
 });
 
 test('profileResponse: player stats, history and games', () => {

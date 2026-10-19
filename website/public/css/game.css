@@ -17,7 +17,7 @@
     min-height: 30px;
     margin: -2px 0 -4px;
 }
-.gm-topnav .back-link { margin: 0 0 0 4px; }
+.gm-topnav .back-link { margin: 0; }
 .gm-mini { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 .gm-mini-btn {
     display: inline-flex;
@@ -40,7 +40,7 @@
 }
 .gm-mini-btn .digits { font-size: 18px; line-height: 1; letter-spacing: .03em; }
 a.gm-mini-btn:hover { color: var(--text); background: rgba(255, 255, 255, .12); border-color: rgba(255, 255, 255, .26); }
-.gm-mini-btn.is-off { color: rgba(244, 247, 251, .5); background: rgba(10, 14, 22, .22); border-style: dashed; cursor: default; }
+.gm-mini-btn.is-off { color: var(--label); background: rgba(10, 14, 22, .34); border-style: dashed; cursor: default; }
 .gm-chev { display: inline-block; font: 700 16px/1 var(--font-pixel); transform: translateY(-1px); transition: transform .15s; }
 a.gm-mini-btn[rel="prev"]:hover .gm-chev { transform: translate(-2px, -1px); }
 a.gm-mini-btn[rel="next"]:hover .gm-chev { transform: translate(2px, -1px); }

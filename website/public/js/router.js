@@ -80,9 +80,10 @@ export function getQuery() {
 }
 
 /** Merge into the current query (null/undefined/''/false removes a key) with replaceState.
- *  Keeps the route and does not notify onChange (the caller already knows). */
-export function setQuery(obj) {
-    const { path } = currentLocation();
+ *  Does not notify onChange (the caller already knows). `path` swaps the app path too, e.g. a
+ *  profile opened by an old name shows its current one. */
+export function setQuery(obj, { path: nextPath } = {}) {
+    const path = nextPath || currentLocation().path;
     const next = { ...getQuery(), ...(obj || {}) };
     const qs = buildQuery(next);
     const url = state.hashMode ? `${location.pathname}${location.search}#${path}${qs}` : `${state.basePath}${path}${qs}`;

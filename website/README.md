@@ -174,18 +174,18 @@ For team games, put all teammates in one team's `players` array and set `teamSiz
 |---|---|---|
 | `mode` | yes | Mode slug: lowercase letters, digits, `-`, `_` (max 32). Looked up in `config.modes`. |
 | `modeName` | no | Display name for this game only (overrides `config.modes`). |
-| `map` | no | Map slug, e.g. `"cherry_grove"`; shown as "Cherry Grove". |
+| `map` | no | Map slug or name: `"cherry_grove"` or `"Cherry Grove"` (stored as the slug); shown as "Cherry Grove". |
 | `teamSize` | yes | Players per team: 1 = solos, 2 = duos … up to 100. |
 | `startedAt`, `endedAt` | yes | **Epoch milliseconds** (Java: `System.currentTimeMillis()`). Seconds are rejected with a clear error. |
 | `ranked` | no | `false` stores the game but leaves it out of the rankings and history (e.g. practice rounds). Default `true`. |
-| `number` | no | Game number. Leave it out and the site numbers games 1, 2, 3 … itself. |
+| `number` | no | Game number. Leave it out and the site numbers games 1, 2, 3 … itself. If the number is already taken by a different game, the game is saved under the next free number (see the response). |
 | `teams[]` | yes | Every team, in any order (max 200). |
-| `teams[].placement` | yes | 1 = winner … N = first team out. Unique, 1 to the number of teams. |
-| `teams[].eliminatedAt` | no | Epoch ms when the team was knocked out; `null` for the winner. Shown as "Out at 12:04". |
+| `teams[].placement` | yes | 1 = winner … N = first team out. Unique; lower is better. Gaps are fine (e.g. after leaving out an empty team): the site renumbers them 1, 2, 3 … |
+| `teams[].eliminatedAt` | no | Epoch ms when the team was knocked out; `null` (or `0`) for the winner. Shown as "Out at 12:04". `0` counts as not set. |
 | `teams[].players[]` | yes | 1 to `teamSize` players. |
 | `….uuid` | yes | The player's Minecraft UUID, with or without dashes. This is their identity: name changes keep their stats. |
-| `….name` | yes | Current Minecraft name (1–16 of `A-Z a-z 0-9 _`). The newest game's name is shown. |
-| `….kills` | yes | Kills in this game (0–1000). |
+| `….name` | yes | Current Minecraft name (1–16 of `A-Z a-z 0-9 _`), optionally after one symbol such as Geyser/Floodgate's `.` prefix for Bedrock players. The newest game's name is shown; old names still open the profile. |
+| `….kills` | yes | Kills in this game (0–1000). Left out = 0. |
 | `….deaths` | no | Defaults to 0 for the winners and 1 for everyone else. |
 | `….damage` | no | Hearts of damage dealt; summed on the profile ("Damage dealt"). |
 | `….skin` | no | Skin id for mc-heads.net; defaults to the UUID. |
@@ -197,15 +197,17 @@ Unknown fields are ignored, so you can send extra data. A game with fewer than 4
 
 | Status | Body | Meaning |
 |---|---|---|
-| `201` | `{ "number": 42 }` | Saved as game #42 (also sent in the `Location` header). |
+| `201` | `{ "number": 42 }` | Saved as game #42 (also sent in the `Location` header). If you sent a `number` that a different game already has, this is the number it got instead. |
 | `400` | `{ "error": "Invalid game", "details": ["teams[1].players[0].name: must be 1-16 characters … (got \"Bad Name!\")", …] }` | Fix the listed fields and send it again. |
 | `401` | `{ "error": "Missing or invalid API key" }` | Wrong or missing `Authorization` header. |
-| `409` | `{ "error": "This game was already recorded as #42", "number": 42 }` | Duplicate, so a retry after a timeout is safe. |
+| `409` | `{ "error": "This game was already recorded as #42", "number": 42 }` | This exact game is already stored, so a retry after a timeout is safe. |
 | `413` | `{ "error": "Body too large …" }` | Bodies are limited to 1 MB (thousands of players). |
 | `503` | `{ "error": "Writes are disabled …" }` | The server has no `EVENTS_API_KEY`, or runs in demo mode. |
 
-A resend is caught as a duplicate when it has the same `number`, or (without a number) the same
-mode, start, end, team count and winners. So if a request times out, it is safe to retry.
+A resend is caught as a duplicate when it has the same mode, start, end, team count and winners
+(with or without its `number`). So if a request times out, it is safe to retry. A *different* game
+that reuses a number (your plugin's counter restarted, or two arenas count from 1) is never lost:
+it gets the next free number.
 
 **Removing a game** (e.g. a test game, or a game that had a cheater):
 
@@ -365,8 +367,13 @@ server {
 
 Caddy is a one-liner: `events.example.net { reverse_proxy 127.0.0.1:8080 }`, which also sets up HTTPS.
 
-The server already gzips responses, sends ETags and caches static files for an hour. After you
-change CSS or JS, visitors may see the old version for up to an hour unless they reload.
+The server already gzips responses and sends ETags. Pages, CSS, JS and API data are revalidated
+on every load (an unchanged file or poll costs a tiny `304`), so an upgrade shows up at once;
+images are cached for an hour.
+
+It also sends a strict `Content-Security-Policy` that, among other things, stops other sites from
+showing your pages in a frame. To embed the site in an iframe on your own domain, change
+`frame-ancestors` in the `CSP` list near the top of `server.js` and remove the `X-Frame-Options` line.
 
 ### Static demo hosting (GitHub Pages, Netlify, any web host)
 
@@ -384,7 +391,8 @@ games; real rankings need `server.js`.
 
 ## API reference
 
-All responses are JSON with `Cache-Control: no-store`. Reads need no key.
+All responses are JSON. Reads need no key and send an `ETag` with `Cache-Control: no-cache`, so a
+client that sends `If-None-Match` gets `304` while nothing changed. Errors and writes are `no-store`.
 
 | Method & path | Returns |
 |---|---|
@@ -393,7 +401,7 @@ All responses are JSON with `Cache-Control: no-store`. Reads need no key.
 | `GET /api/rankings` | `{ siteName, ratingName, generatedAt, total, players: [Row] }`, the whole ladder in order. |
 | `GET /api/games?before=N&limit=30` | `{ total, more, games: [Summary] }`, newest first. `before` (exclusive) pages backwards; `limit` 1–100. |
 | `GET /api/games/:number` | The full game (below), or 404. |
-| `GET /api/profile/:nameOrUuid` | `{ player, history, games, neighbors }`, or 404. Names ignore case; UUIDs work with or without dashes. |
+| `GET /api/profile/:nameOrUuid` | `{ player, history, games, neighbors }`, or 404. UUIDs work with or without dashes. Names: the current name (exact case first, then any case), then names the player used before. If two players share a name, the most recently active one gets it; `player.key` is the name, or the UUID when the name leads to someone else. |
 | `POST /api/games` | Store a game (needs the key). See [Responses](#responses). |
 | `DELETE /api/games/:number` | Remove a game (needs the key): `204` / `404`. |
 
@@ -410,7 +418,7 @@ Game     = { ...Summary fields, ranked: true, winners: [...],
                                    hypeBefore, hypeChange, hypeAfter, tierBefore, tierAfter }] }],
              mostKills: { uuid, name, skin, kills } | null,
              prev: olderGameNumber | null, next: newerGameNumber | null }
-Profile  = { player:    { ...Row fields, podiums, damage, bestPlacement, peakHype, lowHype, firstSeen, total,
+Profile  = { player:    { ...Row fields, key, podiums, damage, bestPlacement, peakHype, lowHype, firstSeen, total,
                           winRate, top3Rate, killsPerEvent, events30d, tierMin, nextTierMin, nextTierName, progress, toNext },
              history:   [{ number, at, hype, change, rank, placement, teams }],      // oldest first
              games:     [{ number, mode, modeName, map, teamSize, startedAt, endedAt, placement, teams,
@@ -421,10 +429,7 @@ Profile  = { player:    { ...Row fields, podiums, damage, bestPlacement, peakHyp
 Times are epoch milliseconds, `duration` is in ms, and `rank` in `history` is the player's ladder
 position right after that game. Unranked games and games with too few teams never appear.
 
-Errors are `{ error }` with a matching status code. One detail for API clients: the website's
-own pages send the header `X-Soft-404: 1`, which makes a GET 404 come back as
-`200 { error, notFound: true }`, so browsers don't log a console error for "Player not found".
-Other clients can ignore this and get normal 404s.
+Errors are `{ error }` with a matching status code.
 
 ---
 
@@ -434,14 +439,14 @@ Other clients can ignore this and get normal 404s.
 |---|---|
 | `/` or `/rankings/overall` | Rankings. `?q=steve` searches, `?tier=gold` filters (coal, copper, iron, gold, emerald, diamond, netherite). |
 | `/rankings/history` | Game history |
-| `/rankings/history/42` | Game #42. `?player=CreeperKing` highlights that player's team (profile links add it). |
-| `/profile/CreeperKing` | Player profile (name or UUID). `?chart=rank` shows rank instead of Hype; `?range=7d`, `30d` or `90d` limits the chart. |
+| `/rankings/history/42` | Game #42. `?player=CreeperKing` (name or UUID) highlights that player's team; profile links add it. |
+| `/profile/CreeperKing` | Player profile (name or UUID). `?chart=rank` shows rank instead of Hype; `?range=7d`, `30d` or `90d` limits the chart. Links inside the site add `?id=<uuid>` so they open the right player after a rename; the address bar then shows the current name. |
 
 All of these are shareable links. On static hosting they look like `index.html#/profile/CreeperKing`.
 On a live server, `https://your-site/?demo=1` opens the bundled demo data instead (handy for comparing).
 
 Keyboard: **/** jumps to the player search and **Esc** leaves it. **Enter** in the search opens
-the player (exact or single match). On a game page, **←** / **→** open the older/newer game. The
+the player (exact or single match) from any page. On a game page, **←** / **→** open the older/newer game. The
 profile chart is keyboard-accessible: Tab to it, use the arrow keys, Home/End, and Enter to open a game.
 
 ---
@@ -478,14 +483,15 @@ The scoring engine in `public/js/shared/` runs unchanged in Node and in the brow
 the static demo produces exactly the same pages as the server.
 
 Fonts: Pixelify Sans (text), Silkscreen (small labels) and Jersey 10 (numbers, because Pixelify's
-"5" looks like an "S"), loaded from Google Fonts. Without them, the site falls back to system fonts.
+"5" looks like an "S"), loaded from Google Fonts by `js/main.js`. The page never waits for them: it
+shows system fonts until they arrive, and keeps them if Google Fonts is slow or blocked.
 
 ---
 
 ## Development and tests
 
 ```sh
-npm test          # 80 tests: scoring, tiers, validation, storage, seed, HTTP server
+npm test          # 86 tests: scoring, tiers, validation, storage, seed, HTTP server
 npm run check     # syntax-check every .js file
 npm run demo      # demo server on :8080
 npm run seed      # regenerate public/demo/games.json (same output every run)

@@ -72,7 +72,7 @@ test('top-level field errors', () => {
     assert.match(errorsFor((g) => { g.number = 0; }), /^number: must be a positive integer/m);
     assert.match(errorsFor((g) => { g.number = 1.5; }), /^number:/m);
     assert.match(errorsFor((g) => { g.number = '7'; }), /^number:/m);
-    assert.match(errorsFor((g) => { g.map = 'cherry grove'; }), /^map: must be a slug/m);
+    assert.match(errorsFor((g) => { g.map = 42; }), /^map: must be a string/m);
     assert.match(errorsFor((g) => { g.modeName = ''; }), /^modeName:/m);
     assert.match(errorsFor((g) => delete g.teamSize), /^teamSize: is required/m);
     assert.match(errorsFor((g) => { g.teamSize = 0; }), /^teamSize:/m);
@@ -95,7 +95,8 @@ test('team errors', () => {
     assert.match(errorsFor((g) => delete g.teams), /^teams: is required/m);
     assert.match(errorsFor((g) => { g.teams[1] = 'x'; }), /^teams\[1\]: must be an object/m);
     assert.match(errorsFor((g) => { g.teams[1].placement = 1; }), /^teams\[1\]\.placement: duplicates teams\[0\]/m);
-    assert.match(errorsFor((g) => { g.teams[1].placement = 9; }), /^teams\[1\]\.placement: must be an integer from 1 \(winner\) to 4/m);
+    assert.match(errorsFor((g) => { g.teams[1].placement = 201; }), /^teams\[1\]\.placement: must be an integer from 1 \(winner\) to 200/m);
+    assert.match(errorsFor((g) => { g.teams[1].placement = 0; }), /^teams\[1\]\.placement:/m);
     assert.match(errorsFor((g) => delete g.teams[2].placement), /^teams\[2\]\.placement:/m);
     assert.match(errorsFor((g) => { g.teams[0].eliminatedAt = g.endedAt; }), /^teams\[0\]\.eliminatedAt: must be null for the winning team/m);
     assert.match(errorsFor((g) => { g.teams[1].eliminatedAt = g.startedAt - 10 * MIN; }), /^teams\[1\]\.eliminatedAt: must be between/m);
@@ -124,7 +125,6 @@ test('player errors', () => {
     for (const name of ['', 'has space', 'x'.repeat(17), 'Ünïcode', 42, null]) {
         assert.match(errorsFor((g) => { g.teams[1].players[0].name = name; }), /^teams\[1\]\.players\[0\]\.name: must be 1-16 characters/m, String(name));
     }
-    assert.match(errorsFor((g) => delete g.teams[0].players[1].kills), /kills: is required: an integer 0-1000/);
     assert.match(errorsFor((g) => { g.teams[0].players[1].kills = -1; }), /kills:/);
     assert.match(errorsFor((g) => { g.teams[0].players[1].kills = 1.5; }), /kills:/);
     assert.match(errorsFor((g) => { g.teams[0].players[1].kills = '3'; }), /kills:/);
@@ -135,6 +135,43 @@ test('player errors', () => {
     assert.match(errorsFor((g) => { g.teams[0].players[1] = 7; }), /^teams\[0\]\.players\[1\]: must be an object/m);
     // helpful: shows the offending value
     assert.match(errorsFor((g) => { g.teams[1].players[0].name = 'Bad Name!'; }), /\(got "Bad Name!"\)/);
+});
+
+test('display-only fields are forgiving: map names, eliminatedAt 0, placement gaps, missing kills', () => {
+    const raw = good();
+    raw.map = '  Cherry Grove (v2) ';
+    for (const t of raw.teams) t.eliminatedAt = 0; // Java's default long
+    raw.teams.splice(2, 1); // an empty team was left out, the others keep their placements
+    raw.teams[0].placement = 3; // winners: the lowest placement, even if it isn't 1
+    raw.teams[1].placement = 5;
+    raw.teams[2].placement = 9;
+    delete raw.teams[1].players[1].kills; // serializer skipped a zero
+    const res = check(raw);
+    assert.equal(res.ok, true, res.errors.join('\n'));
+    assert.equal(res.game.map, 'cherry_grove_v2');
+    assert.deepEqual(res.game.teams.map((t) => t.placement), [1, 2, 3]);
+    assert.deepEqual(res.game.teams.map((t) => t.eliminatedAt), [null, null, null]);
+    assert.deepEqual(res.game.teams[0].players.map((p) => p.uuid), [uuidFor(1), uuidFor(2)]);
+    assert.equal(res.game.teams[1].players[1].kills, 0);
+    // a map name with nothing slug-able is left out rather than failing the game
+    assert.equal(check({ ...good(), map: '桜の森' }).game.map, undefined);
+    assert.equal(check({ ...good(), map: 'x'.repeat(60) }).game.map.length, 48);
+    // the winning (lowest) team still may not have an elimination time
+    assert.match(errorsFor((g) => { g.teams[0].placement = 2; g.teams[1].placement = 3; g.teams[0].eliminatedAt = g.endedAt; }),
+        /^teams\[0\]\.eliminatedAt: must be null for the winning team/m);
+});
+
+test('names: Java names, optionally after one prefix symbol (Geyser/Floodgate Bedrock players)', () => {
+    for (const name of ['.BedrockGamer', '*Steve', '.x', 'Steve_01', '_']) {
+        const g = good();
+        g.teams[1].players[0].name = name;
+        const res = check(g);
+        assert.equal(res.ok, true, `${name}: ${res.errors.join('\n')}`);
+        assert.equal(res.game.teams[1].players[0].name, name);
+    }
+    for (const name of ['..x', '.', '.has space', '[VIP]Steve', '§aSteve', `.${'x'.repeat(17)}`]) {
+        assert.match(errorsFor((g) => { g.teams[1].players[0].name = name; }), /^teams\[1\]\.players\[0\]\.name: must be 1-16 characters/m, name);
+    }
 });
 
 test('size limits: 200 teams, 1000 players', () => {

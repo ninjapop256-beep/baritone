@@ -50,8 +50,9 @@ const pickRange = (q) => (RANGES.some((r) => r.id === q?.range) ? q.range : 'all
 const rangeById = (id) => RANGES.find((r) => r.id === id) || RANGES[RANGES.length - 1];
 const short = (s, n = 32) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
-/** Chart points for a range; each keeps the previous game's rank for "moved" deltas. */
-function buildPoints(history, range, now, metric) {
+/** Chart points for a range; each keeps the previous game's rank for "moved" deltas.
+ *  x is when the game ended (rating order); `when` is its start, as shown everywhere else. */
+function buildPoints(history, range, now, metric, startOf) {
     const since = range.days ? now - range.days * DAY : -Infinity;
     const out = [];
     for (let i = 0; i < history.length; i++) {
@@ -60,6 +61,7 @@ function buildPoints(history, range, now, metric) {
         out.push({
             ...h,
             x: h.at,
+            when: startOf.get(h.number) ?? h.at,
             y: metric === 'rank' ? h.rank : h.hype,
             prevRank: i > 0 ? history[i - 1].rank : null,
             hypeBefore: h.hype - h.change,
@@ -88,6 +90,11 @@ export function mount(root, ctx) {
     const { api, config, shell } = ctx;
     const ratingName = config.ratingName || 'Hype';
     const key = String(ctx.params?.name ?? '').trim();
+    // the site's links add ?id=<uuid>, so renamed players and shared names open the right
+    // profile; after the first load we poll by uuid and show the current name in the URL
+    let lookup = String(ctx.query?.id ?? '').trim() || key;
+    let urlKey = key;
+    let urlHasId = ctx.query?.id !== undefined;
     const state = {
         data: null,
         metric: pickMetric(ctx.query),
@@ -102,10 +109,11 @@ export function mount(root, ctx) {
     let chartSig = '';
 
     const back = shell.backLink(ctx.href('/rankings/overall'), 'Back to rankings');
-    const profileHref = (name) => ctx.href(`/profile/${encodeURIComponent(name)}`);
-    // ?player= makes the game page highlight (and scroll to) this player's team
-    const gamePath = (n, name) => `/rankings/history/${n}${name ? `?player=${encodeURIComponent(name)}` : ''}`;
-    const gameHref = (n, name) => ctx.href(gamePath(n, name));
+    const profileHref = (p) => ctx.href(`/profile/${encodeURIComponent(p.name)}?id=${encodeURIComponent(p.uuid)}`);
+    // ?player=<uuid> makes the game page highlight (and scroll to) this player's team, under any old name
+    const gamePath = (n, who) => `/rankings/history/${n}${who ? `?player=${encodeURIComponent(who)}` : ''}`;
+    const gameHref = (n, who) => ctx.href(gamePath(n, who));
+    const startOf = new Map(); // game number -> startedAt, for the chart's dates
     const part = (name) => qs(`[data-part="${name}"]`, root);
 
     // ---------- whole-page states ----------
@@ -273,7 +281,7 @@ export function mount(root, ctx) {
                     <span class="num pf-near-hype">${fmtInt(n.hype)}</span>`;
                 return html`<li>${cur
                     ? html`<div class="row pf-near-row is-current" aria-current="true">${inner}</div>`
-                    : html`<a class="row pf-near-row" href="${profileHref(n.name)}">${inner}</a>`}</li>`;
+                    : html`<a class="row pf-near-row" href="${profileHref(n)}">${inner}</a>`}</li>`;
             })}</ol>`;
     }
 
@@ -347,8 +355,8 @@ export function mount(root, ctx) {
                     <th scope="col" class="right">${ratingName}</th><th scope="col" class="right">Change</th><th scope="col" class="right">Rank</th>
                 </tr></thead>
                 <tbody>${rows.length ? rows.map((pt) => html`<tr>
-                    <th scope="row"><a class="link" href="${gameHref(pt.number, state.data?.player?.name)}">#${pt.number}</a></th>
-                    <td>${nums(fmtDateTime(pt.at))}</td>
+                    <th scope="row"><a class="link" href="${gameHref(pt.number, state.data?.player?.uuid)}">#${pt.number}</a></th>
+                    <td>${nums(fmtDateTime(pt.when))}</td>
                     <td class="right">${placeText(pt.placement)}<span class="pf-table-of"> / ${fmtInt(pt.teams)}</span></td>
                     <td class="right num">${fmtInt(pt.hype)}</td>
                     <td class="right">${hypeDelta(pt.change)}</td>
@@ -362,10 +370,10 @@ export function mount(root, ctx) {
             <span class="pf-caret" aria-hidden="true"></span>${state.table ? 'Hide table' : 'Show as table'}</button>`;
     }
 
-    function gameRow(g, now, playerName) {
+    function gameRow(g, now, who) {
         const unit = g.teamSize > 1 ? 'teams' : 'players';
         const when = g.startedAt ?? g.endedAt; // start time, like the game history list and game page
-        return html`<li><a class="row pf-game" href="${gameHref(g.number, playerName)}" data-game="${g.number}">
+        return html`<li><a class="row pf-game" href="${gameHref(g.number, who)}" data-game="${g.number}">
             <span class="cell pf-game-when hide-sm">
                 <span class="pf-game-day">${nums(fmtDate(when))}</span>
                 <span class="pf-sub" title="${fmtDateTime(when)}">${nums(`${fmtTime(when)} · ${fmtRelative(when, now)}`)}</span>
@@ -391,7 +399,7 @@ export function mount(root, ctx) {
                 </div>
             </div>
             ${games.length
-                ? html`<ol class="pf-game-list" role="list">${games.slice(0, shown).map((g) => gameRow(g, now, state.data?.player?.name))}</ol>`
+                ? html`<ol class="pf-game-list" role="list">${games.slice(0, shown).map((g) => gameRow(g, now, state.data?.player?.uuid))}</ol>`
                 : html`<div class="empty"><p class="empty-title">No ranked games yet</p></div>`}
             ${rest > 0 ? html`<div class="pf-more"><button class="btn" type="button" data-more data-focus="more">Show ${fmtInt(Math.min(rest, MORE_STEP))} more</button></div>` : ''}`;
     }
@@ -413,7 +421,7 @@ export function mount(root, ctx) {
     function tipFor(pt) {
         const rank = state.metric === 'rank';
         const head = html`<span class="chart-tip-k">Game #${pt.number}</span>`;
-        const date = html`<span class="chart-tip-date">${nums(fmtDateTime(pt.at))}</span>`;
+        const date = html`<span class="chart-tip-date">${nums(fmtDateTime(pt.when))}</span>`;
         if (rank) {
             return html`${head}
                 <span class="chart-tip-v"><span class="digits">#${fmtInt(pt.rank)}</span><small>on the ladder</small></span>
@@ -427,7 +435,7 @@ export function mount(root, ctx) {
     }
 
     function describe(pt) {
-        const when = fmtDateTime(pt.at);
+        const when = fmtDateTime(pt.when);
         const place = `placed ${fmtInt(pt.placement)} of ${fmtInt(pt.teams)}`;
         if (state.metric === 'rank') {
             const moved = pt.prevRank === null ? 'first game' : `${pt.prevRank - pt.rank >= 0 ? 'up' : 'down'} ${fmtInt(Math.abs(pt.prevRank - pt.rank))}`;
@@ -442,7 +450,7 @@ export function mount(root, ctx) {
         const now = ctx.now();
         const range = rangeById(state.range);
         const rank = state.metric === 'rank';
-        const points = buildPoints(d.history || [], range, now, state.metric);
+        const points = buildPoints(d.history || [], range, now, state.metric, startOf);
         const card = qs('[data-chart-card]', root);
         if (card) {
             const cls = `card card-pad pf-chart tier-${tierClass(d.player.tier)} metric-${state.metric}`;
@@ -503,7 +511,7 @@ export function mount(root, ctx) {
             setHtml(root, frameView());
             chartSig = '';
             chart = createChart(qs('[data-chart]', root), {
-                onSelect: (pt) => ctx.navigate(gamePath(pt.number, state.data?.player?.name)),
+                onSelect: (pt) => ctx.navigate(gamePath(pt.number, state.data?.player?.uuid)),
             });
         }
         const p = d.player;
@@ -538,11 +546,15 @@ export function mount(root, ctx) {
         if (!key) { showMissing(); return; }
         inflight = true;
         try {
-            const data = await api.profile(key);
+            const data = await api.profile(lookup);
             if (!alive) return;
             if (!data?.player) throw new Error('The server sent an incomplete profile.');
             state.data = data;
+            lookup = data.player.uuid || lookup;
+            startOf.clear();
+            for (const g of data.games || []) startOf.set(g.number, g.startedAt ?? g.endedAt);
             renderAll();
+            showCanonicalUrl(data.player);
         } catch (err) {
             if (!alive) return;
             if (err?.status === 404) showMissing();
@@ -551,6 +563,15 @@ export function mount(root, ctx) {
         } finally {
             inflight = false;
         }
+    }
+
+    // /profile/OldName?id=… → /profile/NewName (the uuid stays only if the name now leads elsewhere)
+    function showCanonicalUrl(p) {
+        const canon = p.key || p.name;
+        if (!canon || (canon === urlKey && !urlHasId)) return;
+        ctx.setQuery({ id: null }, { path: `/profile/${encodeURIComponent(canon)}` });
+        urlKey = canon;
+        urlHasId = false;
     }
 
     // ---------- interaction ----------

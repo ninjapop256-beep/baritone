@@ -178,7 +178,8 @@ export function renderShell({ config = {}, mode = 'demo', router = {} } = {}) {
         ev.preventDefault();
         if (dispatch('submit')) return;
         const value = (input?.value || '').trim();
-        navigate(value ? `/rankings/overall?q=${encodeURIComponent(value)}` : '/rankings/overall');
+        // go=1: the rankings page opens the player straight away on an exact or single match
+        navigate(value ? `/rankings/overall?q=${encodeURIComponent(value)}&go=1` : '/rankings/overall');
     });
     input?.addEventListener('input', () => {
         form.classList.toggle('has-value', !!input.value);

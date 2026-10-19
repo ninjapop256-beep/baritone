@@ -120,15 +120,18 @@ export function gameResponse(league, number) {
     };
 }
 
-// Player by uuid (dashed or not) or by name (case-insensitive).
+// Player by uuid (dashed or not) or by name: current name in exact case, then in any case,
+// then a name the player used before (so links survive renames). Names may be shared over
+// time; the most recent user wins, which is why the site's own links also carry the uuid.
 export function findPlayer(league, key) {
     if (key === null || key === undefined) return null;
     const text = String(key).trim();
     if (!text) return null;
     const uuid = normalizeUuid(text);
     if (uuid && league.players.has(uuid)) return league.players.get(uuid);
-    const byName = league.byName.get(text.toLowerCase());
-    return byName ? league.players.get(byName) || null : null;
+    const lower = text.toLowerCase();
+    const id = league.byExactName?.get(text) ?? league.byName.get(lower) ?? league.pastNames?.get(lower);
+    return id ? league.players.get(id) || null : null;
 }
 
 function neighborRow(p) {
@@ -151,6 +154,8 @@ export function profileResponse(league, key, { now } = {}) {
 
     const player = {
         ...rest,
+        // shortest URL key that opens this profile: the name, or the uuid if the name leads elsewhere
+        key: findPlayer(league, record.name) === record ? record.name : record.uuid,
         total: league.ranked.length,
         kd: kdRatio(record.kills, record.deaths),
         winRate: events ? round4(record.wins / events) : 0,

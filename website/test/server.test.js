@@ -87,9 +87,12 @@ describe('live server', () => {
         const { status, body, headers } = await json(await fetch(`${srv.base}/api/health`));
         assert.equal(status, 200);
         assert.deepEqual(body, { ok: true, mode: 'live', games: 3, players: 11 });
-        assert.equal(headers.get('cache-control'), 'no-store');
+        assert.equal(headers.get('cache-control'), 'no-cache');
+        assert.match(headers.get('etag'), /^"[\w-]+"$/);
         assert.match(headers.get('content-type'), /^application\/json/);
         assert.equal(headers.get('x-content-type-options'), 'nosniff');
+        assert.match(headers.get('content-security-policy'), /frame-ancestors 'none'/);
+        assert.equal(headers.get('x-frame-options'), 'DENY');
     });
 
     test('GET /api/config merges defaults, adds mode, hides secrets', async () => {
@@ -117,6 +120,24 @@ describe('live server', () => {
         assert.equal(head.status, 200);
         assert.equal(head.body.length, 0);
         assert.equal(Number(head.headers['content-length']), Buffer.byteLength(again));
+    });
+
+    test('API reads: ETag + 304 while unchanged (plain and gzip), new ETag after a write', async () => {
+        for (const p of ['/api/rankings', '/api/games', '/api/games/2', '/api/profile/Player1', '/api/health', '/api/config']) {
+            const first = await raw(srv.base, { path: p });
+            assert.equal(first.status, 200, p);
+            assert.equal(first.headers['cache-control'], 'no-cache', p);
+            const tag = first.headers.etag;
+            const again = await raw(srv.base, { path: p, headers: { 'If-None-Match': tag } });
+            assert.equal(again.status, 304, p);
+            assert.equal(again.body.length, 0, p);
+            assert.equal(again.headers.etag, tag, p);
+        }
+        const gz = await raw(srv.base, { path: '/api/rankings', headers: { 'Accept-Encoding': 'gzip' } });
+        assert.match(gz.headers.etag, /-gz"$/);
+        const gz304 = await raw(srv.base, { path: '/api/rankings', headers: { 'Accept-Encoding': 'gzip', 'If-None-Match': gz.headers.etag } });
+        assert.equal(gz304.status, 304);
+        assert.equal((await raw(srv.base, { path: '/api/rankings', headers: { 'If-None-Match': '"stale"' } })).status, 200);
     });
 
     test('GET /api/games paging', async () => {
@@ -159,24 +180,6 @@ describe('live server', () => {
         assert.match(missing.body.error, /Nobody Here/);
     });
 
-    test('X-Soft-404 turns API 404s into 200 { notFound } for GET only', async () => {
-        const soft = { 'X-Soft-404': '1' };
-        for (const p of ['/api/games/99', '/api/profile/Nobody%20Here', '/api/nope']) {
-            const res = await json(await fetch(`${srv.base}${p}`, { headers: soft }));
-            assert.equal(res.status, 200, p);
-            assert.equal(res.body.notFound, true, p);
-            assert.equal(typeof res.body.error, 'string', p);
-            assert.equal(res.headers.get('cache-control'), 'no-store');
-        }
-        // found resources are unchanged; writes keep real status codes
-        const ok = await json(await fetch(`${srv.base}/api/games/2`, { headers: soft }));
-        assert.equal(ok.body.number, 2);
-        assert.equal(ok.body.notFound, undefined);
-        const del = await fetch(`${srv.base}/api/games/99`, { method: 'DELETE', headers: { ...soft, Authorization: `Bearer ${KEY}` } });
-        assert.equal(del.status, 404);
-        assert.equal((await fetch(`${srv.base}/api/games/99`, { headers: { 'X-Soft-404': 'no' } })).status, 404);
-    });
-
     test('unknown API routes and methods', async () => {
         assert.equal((await fetch(`${srv.base}/api/nope`)).status, 404);
         assert.equal((await fetch(`${srv.base}/api`)).status, 404);
@@ -190,7 +193,7 @@ describe('live server', () => {
         const css = await fetch(`${srv.base}/css/base.css`);
         assert.equal(css.status, 200);
         assert.equal(css.headers.get('content-type'), 'text/css; charset=utf-8');
-        assert.equal(css.headers.get('cache-control'), 'public, max-age=3600');
+        assert.equal(css.headers.get('cache-control'), 'no-cache'); // JS/CSS revalidate: no old/new module mix after an upgrade
         const etag = css.headers.get('etag');
         assert.match(etag, /^"[\w-]+"$/);
         assert.match(await css.text(), /color: red/);
@@ -204,6 +207,7 @@ describe('live server', () => {
         assert.equal(gz304.status, 304);
         const svg = await fetch(`${srv.base}/img/favicon.svg`);
         assert.equal(svg.headers.get('content-type'), 'image/svg+xml; charset=utf-8');
+        assert.equal(svg.headers.get('cache-control'), 'public, max-age=3600');
         const cfg = await fetch(`${srv.base}/config.json`);
         assert.equal(cfg.headers.get('cache-control'), 'no-cache');
         const head = await raw(srv.base, { method: 'HEAD', path: '/css/base.css' });
@@ -215,7 +219,7 @@ describe('live server', () => {
 
     test('SPA fallback injects the base tag', async () => {
         for (const p of ['/', '/index.html', '/rankings', '/rankings/overall', '/rankings/history', '/rankings/history/2',
-            '/profile/Player1', '/profile/Some%20Name?x=1']) {
+            '/profile/Player1', '/profile/Some%20Name?x=1', '/profile/.BedrockGamer', '/profile/%2ESteve']) {
             const res = await fetch(`${srv.base}${p}`);
             assert.equal(res.status, 200, p);
             assert.equal(res.headers.get('content-type'), 'text/html; charset=utf-8');
@@ -223,6 +227,7 @@ describe('live server', () => {
             const text = await res.text();
             assert.ok(text.includes('<meta charset="utf-8"><base href="/"><meta name="app-mode" content="live"><title>'), p);
             assert.equal(text.includes('<!--app-base-->'), false);
+            assert.match(res.headers.get('content-security-policy'), /script-src 'self'/);
         }
         const unknown = await fetch(`${srv.base}/some/other/page`);
         assert.equal(unknown.status, 200); // client router shows "Page not found"
@@ -272,9 +277,15 @@ describe('live server', () => {
         assert.ok(rankings.body.players.some((p) => p.events === 4 || p.events === 3));
         assert.equal((await json(await fetch(`${srv.base}/api/games?limit=1`))).body.games[0].number, 10);
 
-        const dupNumber = await json(await post(srv.base, freshGame(10, 5 * MIN)));
-        assert.equal(dupNumber.status, 409);
-        assert.equal(dupNumber.body.number, 10);
+        // a resend of #10 is a duplicate; a different game that reuses #10 gets the next number
+        const resent = await json(await post(srv.base, { ...freshGame(10), startedAt: (await json(await fetch(`${srv.base}/api/games/10`))).body.startedAt,
+            endedAt: (await json(await fetch(`${srv.base}/api/games/10`))).body.endedAt }));
+        assert.equal(resent.status, 409);
+        assert.equal(resent.body.number, 10);
+        const reused = await json(await post(srv.base, freshGame(10, 5 * MIN)));
+        assert.equal(reused.status, 201);
+        assert.equal(reused.body.number, 11);
+        assert.equal(reused.headers.get('location'), '/api/games/11');
         const { number: _n, ...retry } = freshGame(10);
         // same content without a number = plugin retry -> 409
         const retried = await json(await post(srv.base, { ...retry, startedAt: (await json(await fetch(`${srv.base}/api/games/10`))).body.startedAt,
@@ -284,10 +295,10 @@ describe('live server', () => {
         const { number: _m, ...auto } = freshGame(0, 30 * MIN);
         const autoRes = await json(await post(srv.base, auto));
         assert.equal(autoRes.status, 201);
-        assert.equal(autoRes.body.number, 11);
+        assert.equal(autoRes.body.number, 12);
 
         const saved = JSON.parse(await readFile(path.join(dir, 'data', 'games.json'), 'utf8'));
-        assert.deepEqual(saved.map((g) => g.number), [1, 2, 3, 10, 11]);
+        assert.deepEqual(saved.map((g) => g.number), [1, 2, 3, 10, 11, 12]);
 
         const huge = await raw(srv.base, {
             method: 'POST', path: '/api/games',
@@ -317,11 +328,45 @@ describe('live server', () => {
         assert.equal(saved.some((g) => g.number === 3), false);
     });
 
+    test('game numbers up to 15 digits work for GET and DELETE (validation allows 1e9)', async () => {
+        const big = await json(await post(srv.base, freshGame(1e9, 90 * MIN)));
+        assert.equal(big.status, 201);
+        assert.equal(big.body.number, 1e9);
+        const { number: _n, ...auto } = freshGame(0, 120 * MIN);
+        const next = await json(await post(srv.base, auto));
+        assert.equal(next.body.number, 1e9 + 1);
+        assert.equal((await fetch(`${srv.base}/api/games/1000000001`)).status, 200);
+        for (const n of [1e9 + 1, 1e9]) {
+            const del = await fetch(`${srv.base}/api/games/${n}`, { method: 'DELETE', headers: { Authorization: `Bearer ${KEY}` } });
+            assert.equal(del.status, 204, String(n));
+        }
+        assert.equal((await fetch(`${srv.base}/api/games/9999999999999999`)).status, 404); // not a safe integer
+    });
+
+    test('profiles survive renames; Bedrock names; the canonical key', async () => {
+        const uuid = '00000000-0000-4000-8000-0000000000aa';
+        const start = Date.now() - 50 * MIN;
+        const with4 = (name, offset) => {
+            const g = soloGame(0, range(1, 4), {}, { startedAt: start + offset });
+            delete g.number;
+            g.teams[0].players[0] = { uuid, name, kills: 1 };
+            return g;
+        };
+        assert.equal((await post(srv.base, with4('OldName', 0))).status, 201);
+        assert.equal((await post(srv.base, with4('.NewName', 25 * MIN))).status, 201);
+        const old = await json(await fetch(`${srv.base}/api/profile/oldname`));
+        assert.equal(old.status, 200);
+        assert.equal(old.body.player.uuid, uuid);
+        assert.equal(old.body.player.name, '.NewName');
+        assert.equal(old.body.player.key, '.NewName');
+        assert.equal((await json(await fetch(`${srv.base}/api/profile/.newname`))).body.player.uuid, uuid);
+    });
+
     test('data survives a restart', async () => {
         const second = await start({ publicDir: path.join(dir, 'public'), dataDir: path.join(dir, 'data'), apiKey: KEY });
         try {
             const health = await json(await fetch(`${second.base}/api/health`));
-            assert.equal(health.body.games, 4);
+            assert.equal(health.body.games, 7);
         } finally {
             await second.close();
         }

@@ -26,6 +26,35 @@ function serialise(games) {
     return games.length ? `[\n${games.map((g) => JSON.stringify(g)).join(',\n')}\n]\n` : '[]\n';
 }
 
+// Gives games with a missing, invalid or repeated number (hand-edited or imported files) the
+// numbers after the current maximum, oldest first: the same numbers buildLeague would show.
+// Returns the input array when nothing needs changing, otherwise a new array.
+export function normaliseNumbers(games) {
+    const used = new Set();
+    let max = 0;
+    for (const g of games) {
+        const n = Number(g.number);
+        if (Number.isSafeInteger(n) && n > 0) max = Math.max(max, n);
+    }
+    const fix = [];
+    games.forEach((g, i) => {
+        const n = Number(g.number);
+        const ok = Number.isSafeInteger(n) && n > 0 && !used.has(n);
+        if (ok) used.add(n);
+        if (!ok || n !== g.number) fix.push({ i, number: ok ? n : null }); // "12" -> 12; missing/repeat -> new
+    });
+    if (!fix.length) return games;
+    const time = (g) => Number(g.endedAt) || Number(g.startedAt) || 0;
+    const fresh = fix.filter((f) => f.number === null).sort((a, b) => time(games[a.i]) - time(games[b.i]) || a.i - b.i);
+    for (const f of fresh) f.number = ++max;
+    const out = games.slice();
+    for (const f of fix) {
+        const { number: _old, ...rest } = games[f.i];
+        out[f.i] = { number: f.number, ...rest };
+    }
+    return out;
+}
+
 export function parseGamesJson(text, source = 'games.json') {
     let data;
     try {
@@ -82,20 +111,20 @@ class BaseStore {
         if (this.readOnly) throw new StoreError('This store is read-only', 'READ_ONLY');
     }
 
-    // Validated game -> stored copy with a number. Throws DUPLICATE.
+    // Validated game -> stored copy with a number. Throws DUPLICATE for a resend of a stored
+    // game (same mode, times, team count and winners). A different game whose number is
+    // already taken (plugin counter reset, two arenas counting from 1) gets the next free one.
     prepare(game) {
         this.checkWritable();
         const existing = this.prints.get(fingerprint(game));
         if (existing) {
             throw new StoreError(`This game was already recorded as #${existing.number}`, 'DUPLICATE', { number: existing.number });
         }
-        if (game.number !== undefined && game.number !== null) {
-            if (this.numbers.has(game.number)) {
-                throw new StoreError(`Game #${game.number} already exists`, 'DUPLICATE', { number: game.number });
-            }
+        if (game.number !== undefined && game.number !== null && !this.numbers.has(game.number)) {
             return { ...game };
         }
-        return { number: this.maxNumber + 1, ...game };
+        const { number: _taken, ...rest } = game;
+        return { number: this.maxNumber + 1, ...rest };
     }
 
     async add(game) {
@@ -119,7 +148,8 @@ class BaseStore {
 }
 
 export function createMemoryStore(games = [], { readOnly = true } = {}) {
-    return new BaseStore(Array.isArray(games) ? [...games] : [], { readOnly, kind: 'memory' });
+    const list = Array.isArray(games) ? [...games] : [];
+    return new BaseStore(readOnly ? list : normaliseNumbers(list), { readOnly, kind: 'memory' });
 }
 
 class FileStore extends BaseStore {
@@ -183,7 +213,9 @@ class FileStore extends BaseStore {
     }
 }
 
-// Opens (without creating) dataDir/games.json. A missing file is an empty store.
+// Opens (without creating) dataDir/games.json. A missing file is an empty store. Missing or
+// repeated numbers are fixed in memory (saved with the next write), so the store, the site
+// and DELETE all agree on every game's number.
 export async function openFileStore(dataDir, { fileName = 'games.json' } = {}) {
     const file = path.resolve(dataDir, fileName);
     let games = [];
@@ -192,7 +224,7 @@ export async function openFileStore(dataDir, { fileName = 'games.json' } = {}) {
     } catch (err) {
         if (err.code !== 'ENOENT') throw err;
     }
-    return new FileStore(games, file);
+    return new FileStore(normaliseNumbers(games), file);
 }
 
 export async function loadGamesFile(file) {

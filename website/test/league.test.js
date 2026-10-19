@@ -186,6 +186,10 @@ test('mode names: explicit modeName, config, then title-cased slug', () => {
     assert.equal(league.gameByNumber.get(2).modeName, 'Bed Wars Duos Cup');
     assert.equal(league.gameByNumber.get(3).modeName, 'Build Battle');
     assert.equal(league.gameByNumber.get(3).modeColor, 'blue');
+    // slugs are looked up as own keys only (not Object.prototype members)
+    const proto = buildLeague([soloGame(1, range(1, 5), {}, { mode: 'constructor' }), soloGame(2, range(1, 5), {}, { mode: 'tostring' })], DEFAULT_CONFIG);
+    assert.equal(proto.gameByNumber.get(1).modeName, 'Constructor');
+    assert.equal(proto.gameByNumber.get(2).modeName, 'Tostring');
 });
 
 test('games are processed by endedAt, not by number; name/skin = latest seen', () => {

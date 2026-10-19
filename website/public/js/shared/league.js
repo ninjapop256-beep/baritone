@@ -16,7 +16,8 @@ export function normalizeUuid(value) {
 }
 
 export function modeInfo(mode, config, modeName) {
-    const entry = config?.modes?.[mode];
+    const modes = config?.modes;
+    const entry = modes && Object.prototype.hasOwnProperty.call(modes, mode) ? modes[mode] : undefined;
     const name = typeof modeName === 'string' && modeName.trim() ? modeName.trim()
         : entry?.name || titleCase(mode);
     const color = MODE_COLORS.includes(entry?.color) ? entry.color : 'blue';
@@ -224,6 +225,7 @@ export function buildLeague(rawGames, config, { now } = {}) {
     };
 
     const games = [];
+    const pastNames = new Map(); // lowercase name -> uuid of its most recent user
     const lobbyCap = scoring.fullLobbyTeams;
     const gameStates = [];
     const oldSlots = [];
@@ -287,6 +289,7 @@ export function buildLeague(rawGames, config, { now } = {}) {
                     st.name = p.name;
                     st.nameKey = p.name.toLowerCase();
                 }
+                pastNames.set(st.nameKey, st.uuid);
                 st.skin = p.skin;
                 st.hype = hypeAfter;
                 st.events++;
@@ -373,9 +376,14 @@ export function buildLeague(rawGames, config, { now } = {}) {
         ranked.push(record);
     }
 
-    // Name lookup: on a clash the most recently active player owns the name.
+    // Name lookups (see findPlayer). Current names: exact case, then any case; on a clash the
+    // most recently active player owns the name. pastNames keeps old names working after a rename.
     const byName = new Map();
-    [...ranked].sort((a, b) => a.lastSeen - b.lastSeen).forEach((r) => byName.set(r.name.toLowerCase(), r.uuid));
+    const byExactName = new Map();
+    [...ranked].sort((a, b) => a.lastSeen - b.lastSeen).forEach((r) => {
+        byName.set(r.name.toLowerCase(), r.uuid);
+        byExactName.set(r.name, r.uuid);
+    });
 
     games.sort((a, b) => b.number - a.number);
     const gameByNumber = new Map(games.map((g) => [g.number, g]));
@@ -387,6 +395,8 @@ export function buildLeague(rawGames, config, { now } = {}) {
         gameByNumber,
         players,
         ranked,
-        byName
+        byName,
+        byExactName,
+        pastNames
     };
 }

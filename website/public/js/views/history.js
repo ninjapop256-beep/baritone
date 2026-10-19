@@ -10,8 +10,9 @@ const POLL_MS = 15000;
 const TICK_MS = 60000; // refresh "9 hours ago" labels
 const MAX_HEADS = 4;
 
-// How many games the last visit had loaded, so Back from a game restores the list (and scroll).
-const memory = { count: PAGE };
+// The list the last visit had loaded, so Back from a game restores it (and the scroll position)
+// at once, however many pages deep; a fresh first page is then merged on top.
+const memory = { games: null, total: 0 };
 
 /** 'A', 'A & B', 'A, B & C' */
 export function joinNames(names) {
@@ -34,8 +35,7 @@ export function mount(root, ctx) {
     let tickTimer = null;
     let inflight = null;
     const rowCache = new Map();
-    // back/forward: reload as many games as before (one request, the API caps a page at 100)
-    let firstLimit = ctx.route?.via === 'pop' ? Math.min(100, Math.max(PAGE, memory.count)) : PAGE;
+    const restored = ctx.route?.via === 'pop' && Array.isArray(memory.games) && memory.games.length > 0;
 
     setHtml(root, html`
         <section class="board hs-board" aria-labelledby="hs-title">
@@ -180,8 +180,7 @@ export function mount(root, ctx) {
         if (inflight) return inflight;
         inflight = (async () => {
             try {
-                const page = await api.games({ limit: firstLimit });
-                firstLimit = PAGE;
+                const page = await api.games({ limit: PAGE });
                 if (!alive) return;
                 const fresh = mergeNewest(page);
                 loaded = true;
@@ -252,13 +251,21 @@ export function mount(root, ctx) {
     }
     tickTimer = setInterval(() => { if (!document.hidden) render(); }, TICK_MS);
 
-    skeleton();
+    if (restored) {
+        games = memory.games.slice();
+        total = memory.total;
+        loaded = true;
+        render();
+    } else {
+        skeleton();
+    }
     loadNewest();
 
     return {
         unmount() {
             alive = false;
-            memory.count = games.length || PAGE;
+            memory.games = games.length ? games : null;
+            memory.total = total;
             clearInterval(pollTimer);
             clearInterval(tickTimer);
             document.removeEventListener('visibilitychange', onVisible);

@@ -13,6 +13,8 @@
     --text: #f4f7fb;
     --muted: #93a1b3;
     --faint: #627085;
+    /* tiny uppercase labels: light enough for 4.5:1 over the bright sky at the top of pages */
+    --label: #d3dbe6;
     --gold: #ffcf53;
     --silver: #d9e2ee;
     --bronze: #d9935f;
@@ -334,7 +336,7 @@ h1, h2, h3, h4 {
     padding: 0 6px;
     border-radius: 6px;
     font: 700 11px/1 var(--font-label);
-    color: var(--muted);
+    color: var(--label);
     background: rgba(255, 255, 255, .06);
     border: 1px solid var(--line);
     box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .3);
@@ -446,7 +448,7 @@ h1, h2, h3, h4 {
     font: 700 9px/1 var(--font-label);
     letter-spacing: .16em;
     text-transform: uppercase;
-    color: var(--muted);
+    color: var(--text); /* sits on the brightest part of the sky */
     text-shadow: var(--shadow-soft);
 }
 .server-ips {
@@ -497,7 +499,7 @@ h1, h2, h3, h4 {
 .server-or {
     font: 700 9px/1 var(--font-label);
     text-transform: uppercase;
-    color: var(--faint);
+    color: var(--label);
 }
 .server-cmd {
     display: inline-flex;
@@ -524,7 +526,7 @@ h1, h2, h3, h4 {
     font: 700 9px/1 var(--font-label);
     letter-spacing: .1em;
     text-transform: uppercase;
-    color: rgba(147, 161, 179, .82);
+    color: var(--label);
     background: rgba(0, 0, 0, .14);
     border-block: 1px solid var(--line-soft);
 }
@@ -587,7 +589,7 @@ a.row:active { transform: none; }
     font: 700 9px/1.2 var(--font-label);
     letter-spacing: .1em;
     text-transform: uppercase;
-    color: var(--muted);
+    color: var(--label);
 }
 .pixel { font-family: var(--font-pixel); text-shadow: var(--shadow-hard); }
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -607,7 +609,7 @@ a.row:active { transform: none; }
     letter-spacing: .07em;
     text-transform: uppercase;
     white-space: nowrap;
-    color: var(--muted);
+    color: var(--label);
     background: rgba(255, 255, 255, .05);
     border: 1px solid var(--line);
 }
@@ -617,7 +619,7 @@ a.row:active { transform: none; }
     text-transform: none;
 }
 .chip.good { color: var(--good); border-color: rgba(95, 240, 138, .35); background: rgba(95, 240, 138, .08); }
-.chip.accent { color: var(--accent); border-color: rgba(143, 184, 255, .35); background: rgba(143, 184, 255, .08); }
+.chip.accent { color: #b8d1ff; border-color: rgba(143, 184, 255, .35); background: rgba(143, 184, 255, .08); }
 .chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 
 .mode-pill {
@@ -627,6 +629,7 @@ a.row:active { transform: none; }
     height: 24px;
     padding: 0 10px;
     border-radius: 999px;
+    max-width: 100%;
     font: 700 9.5px/1 var(--font-label);
     letter-spacing: .06em;
     white-space: nowrap;
@@ -638,6 +641,8 @@ a.row:active { transform: none; }
     text-shadow: var(--shadow-soft);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06);
 }
+/* long custom mode names end in an ellipsis instead of spilling out (full name in the title) */
+.mode-pill > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .mode-gold { --mode: var(--mode-gold); }
 .mode-red { --mode: var(--mode-red); }
 .mode-blue { --mode: var(--mode-blue); }
@@ -722,7 +727,7 @@ a.row:active { transform: none; }
     font: 700 9px/1.2 var(--font-label);
     letter-spacing: .1em;
     text-transform: uppercase;
-    color: var(--muted);
+    color: var(--label);
     text-shadow: var(--shadow-soft);
 }
 .stat-value {
@@ -843,16 +848,19 @@ a.row:active { transform: none; }
     gap: 8px;
     justify-self: start;
     align-self: start;
-    margin: -4px 0 -4px 4px;
-    padding: 4px 2px;
+    margin: -6px 0 -6px 0;
+    padding: 6px 13px 6px 9px;
+    border-radius: 999px;
+    /* its own dark backing: it sits straight on the sky, which is brightest at the top */
+    background: rgba(10, 14, 22, .3);
     font: 700 10px/1 var(--font-label);
     letter-spacing: .12em;
     text-transform: uppercase;
-    color: rgba(244, 247, 251, .7);
+    color: var(--label);
     text-shadow: var(--shadow-soft);
-    transition: color .15s;
+    transition: color .15s, background-color .15s;
 }
-.back-link:hover { color: var(--text); }
+.back-link:hover { color: var(--text); background: rgba(10, 14, 22, .45); }
 .back-chevron {
     font: 700 17px/1 var(--font-pixel);
     transform: translateY(-1px);
